@@ -1,0 +1,69 @@
+{
+    "name": "hgbasm",
+    "displayName": "HGBASM",
+    "description": "RGBDS and hgbasm language and project support",
+    "version": "0.0.1",
+    "publisher": "Hawkbat",
+    "homepage": "https://github.com/Hawkbat/hgb-vscode",
+    "bugs": "https://github.com/Hawkbat/hgb-vscode/issues",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Hawkbat/hgb-vscode.git"
+    },
+    "engines": {
+        "vscode": "^1.33.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "keywords": [
+        "rgbds",
+        "hgbasm",
+        "z80",
+        "gbz80",
+        "game boy",
+        "gameboy"
+    ],
+    "icon": "./icon.png",
+    "activationEvents": [
+        "onLanguage:hgbasm"
+    ],
+    "main": "./out/extension",
+    "contributes": {
+        "languages": [
+            {
+                "id": "hgbasm",
+                "extensions": [
+                    ".asm",
+                    ".inc",
+                    ".s",
+                    ".z80",
+                    ".gbz80",
+                    ".sm83",
+                    ".hgb"
+                ],
+                "aliases": [
+                    "GBZ80",
+                    "RGBDS",
+                    "hgbasm",
+                    "z80"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "postinstall": "node ./node_modules/vscode/bin/install"
+    },
+    "devDependencies": {
+        "typescript": "^2.6.1",
+        "vscode": "^1.1.21",
+        "tslint": "^5.8.0",
+        "@types/node": "^8.10.25",
+        "@types/mocha": "^2.2.42"
+    }
+}
