@@ -2,6 +2,97 @@
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "scopeName": "source.hgbasm",
     "patterns": [
-        {}
+        {
+            "name": "comment.line",
+            "match": ";.*$"
+        },
+        {
+            "name": "meta.preprocessor",
+            "match": "^#.*$"
+        },
+        {
+            "name": "string.quoted.double",
+            "begin": "\"",
+            "end": "(\")|((?:[^\\\\\\n])$)",
+            "beginCaptures": {
+                "0": {
+                    "name": "punctuation.definition.string.begin"
+                }
+            },
+            "endCaptures": {
+                "1": {
+                    "name": "punctuation.definition.string.end"
+                },
+                "2": {
+                    "name": "invalid.illegal.newline"
+                }
+            },
+            "patterns": [
+                {
+                    "name": "string.regexp",
+                    "match": "\\{.*\\}"
+                },
+                {
+                    "name": "constant.character.escape",
+                    "match": "\\\\[\\\\\",{}nt1-9@]"
+                }
+            ]
+        },
+        {
+            "name": "string.regexp",
+            "match": "\\{.*\\}"
+        },
+        {
+            "name": "constant.character.escape",
+            "match": "\\\\[\\\\\",{}nt1-9@]"
+        },
+        {
+            "name": "constant.numeric.hex",
+            "match": "\\$[0-9A-Fa-f]+"
+        },
+        {
+            "name": "keyword.control",
+            "match": "(?i)\\b(?:include|incbin|export|global|union|nextu|endu|printt|printv|printi|printf|fail|warn|if|elif|else|endc|purge|rept|endr|opt|popo|pusho|pops|pushs|equ|set|equs|macro|endm|shift|charmap|rsreset|rsset|rb|rw|rl|db|dw|dl|ds|section|align|reseed)\\b"
+        },
+        {
+            "name": "storage.modifier",
+            "match": "(?i)\\b(?:rom0|romx|vram|sram|wram0|wramx|oam|hram)\\b"
+        },
+        {
+            "name": "support.function",
+            "match": "\\b[a-zA-Z]+\\b\\s*(?=\\()"
+        },
+        {
+            "name": "keyword.other",
+            "match": "(?i)\\b(?:adc|add|and|bit|call|ccf|cp|cpl|daa|dec|di|ei|halt|inc|jp|jr|ld|ldh|ldi|ldd|ldhl|nop|or|pop|push|res|ret|reti|rl|rla|rlc|rlca|rr|rra|rrc|rrca|rst|sbc|scf|sla|sra|srl|stop|sub|swap|xor)\\b"
+        },
+        {
+            "name": "support.type",
+            "match": "(?i)\\b(?:a|f|b|c|d|e|h|l|af|bc|de|hli|hld|hl\\+|hl\\-|hl|sp|pc|z|nz|c|nc)\\b"
+        },
+        {
+            "name": "variable",
+            "match": "[a-zA-Z._@#][a-zA-Z0-9._@#]+:*"
+        },
+        {
+            "name": "constant.numeric.decimal",
+            "match": "(?:[0-9]+\\.[0-9]+|[0-9]+)"
+        },
+        {
+            "name": "constant.numeric.octal",
+            "match": "&[0-7]+"
+        },
+        {
+            "name": "constant.numeric.binary",
+            "match": "%[0-1]+"
+        },
+        {
+            "name": "constant.numeric.other",
+            "match": "`[0-3]+"
+        },
+        {
+            "name": "keyword.operator",
+            "match": "(?:[!=<>]?=|&&?|\\|\\|?|<<?|>>?|~|\\+|-|\\*|\/|%|\\^|!)"
+        }
     ]
 }
