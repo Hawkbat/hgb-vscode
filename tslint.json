@@ -30,6 +30,10 @@
 				"parameter"
 			]
 		},
+		"arrow-parens": {
+			"options": "ban-single-arg-parens",
+			"severity": "warn"
+		},
 		"no-non-null-assertion": {
 			"severity": "warn"
 		},
