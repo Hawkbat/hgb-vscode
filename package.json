@@ -20,12 +20,11 @@
     "keywords": [
         "rgbds",
         "hgbasm",
-        "z80",
         "gbz80",
         "game boy",
         "gameboy"
     ],
-    "icon": "./icon.png",
+    "icon": "icon.png",
     "activationEvents": [
         "onLanguage:hgbasm"
     ],

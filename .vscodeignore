@@ -4,6 +4,11 @@ out/test/**
 out/**/*.map
 src/**
 .gitignore
+.gitattributes
 tsconfig.json
 vsc-extension-quickstart.md
 tslint.json
+.yo-rc.json
+icon.svg
+*.vsix
+**/*.ts
