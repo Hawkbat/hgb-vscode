@@ -2,7 +2,7 @@
     "name": "hgbasm-vscode",
     "displayName": "HGBASM",
     "description": "RGBDS and hgbasm language and project support",
-    "version": "0.0.1",
+    "version": "1.0.0",
     "publisher": "Hawkbat",
     "homepage": "https://github.com/Hawkbat/hgb-vscode",
     "bugs": "https://github.com/Hawkbat/hgb-vscode/issues",
