@@ -51,16 +51,16 @@
             "match": "\\$[0-9A-Fa-f]+"
         },
         {
+            "name": "support.function",
+            "match": "\\b[a-zA-Z]+\\b\\s*(?=\\()"
+        },
+        {
             "name": "keyword.control",
-            "match": "(?i)\\b(?:include|incbin|export|global|union|nextu|endu|printt|printv|printi|printf|fail|warn|if|elif|else|endc|purge|rept|endr|opt|popo|pusho|pops|pushs|equ|set|equs|macro|endm|shift|charmap|rsreset|rsset|rb|rw|rl|db|dw|dl|ds|section|align|reseed)\\b"
+            "match": "(?i)\\b(?:include|incbin|export|global|union|nextu|endu|printt|printv|printi|printf|fail|warn|if|elif|else|endc|purge|rept|endr|opt|popo|pusho|pops|pushs|equ|set|equs|macro|endm|shift|charmap|rsreset|rsset|rb|rw|rl|db|dw|dl|ds|section|reseed)\\b"
         },
         {
             "name": "storage.modifier",
-            "match": "(?i)\\b(?:rom0|romx|vram|sram|wram0|wramx|oam|hram)\\b"
-        },
-        {
-            "name": "support.function",
-            "match": "\\b[a-zA-Z]+\\b\\s*(?=\\()"
+            "match": "(?i)\\b(?:rom0|romx|vram|sram|wram0|wramx|oam|hram|bank|align)\\b"
         },
         {
             "name": "keyword.other",

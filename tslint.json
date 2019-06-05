@@ -35,7 +35,7 @@
 			"severity": "warn"
 		},
 		"no-non-null-assertion": {
-			"severity": "warn"
+			"severity": "off"
 		},
 		"object-literal-sort-keys": {
 			"severity": "off"

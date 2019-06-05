@@ -54,5 +54,6 @@
     },
     "folding": {
         "offSide": true
-    }
+    },
+    "wordPattern": "[\\w.]+"
 }

@@ -1,5 +1,5 @@
 import * as v from 'vscode'
-import Provider from './provider'
+import Provider from './Provider'
 
 const provider = new Provider()
 

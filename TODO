@@ -1,0 +1,14 @@
+Add a couple of linting rules that manifest as errors, warnings, or hints
+Code actions for those that can be corrected automatically
+For example, suggest optimizations like `ld a, 0` to `xor a` or error on use of `ld [$FF00+n8]` instead of `ldh`
+Maybe have a few for naming conventions; see https://gist.github.com/ISSOtm/a9057e7c66080f36afcd82ed2863fd62
+
+Add a task provider implementation
+If a project file is detected, add build tasks for compile and compile-and-watch that invoke an included copy of hgbasm-cli
+
+Implement color functions as a hgbasm feature: https://github.com/Hawkbat/hgbasm/issues/30
+Then add color presentations to those functions
+
+Add emulator debugger support for bgb and SameBoy
+For bgb, pass in breakpoints as command-line arguments
+For SameBoy, wrap the command-line debugger

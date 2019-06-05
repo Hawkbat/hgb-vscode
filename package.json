@@ -31,6 +31,218 @@
     ],
     "main": "./out/extension",
     "contributes": {
+        "configuration": [
+            {
+                "title": "HGBASM",
+                "properties": {
+                    "hgbasm.project.sourcePath": {
+                        "description": "A path or glob pattern specifying the source files to assemble.",
+                        "type": "string",
+                        "default": "**/*.{asm,s,z80,gbz80,sm83,hgb}"
+                    },
+                    "hgbasm.project.includePath": {
+                        "description": "A path or glob pattern specifying the folders to search in when including other files from source files.",
+                        "type": "string",
+                        "default": "**/"
+                    },
+                    "hgbasm.project.configPath": {
+                        "description": "A path to check for a gbconfig.json file with compiler configuration.",
+                        "type": "string",
+                        "default": "gbconfig.json"
+                    },
+                    "hgbasm.analysis.sectionSizes": {
+                        "description": "Where the sizes of sections should be displayed.",
+                        "type": "string",
+                        "enum": [
+                            "codelens",
+                            "hover",
+                            "all",
+                            "none"
+                        ],
+                        "default": "all"
+                    },
+                    "hgbasm.analysis.globalLabelOffsets": {
+                        "description": "Where the offsets of global labels (relative to their section) should be displayed.",
+                        "type": "string",
+                        "enum": [
+                            "codelens",
+                            "hover",
+                            "all",
+                            "none"
+                        ],
+                        "default": "none"
+                    },
+                    "hgbasm.analysis.globalLabelSizes": {
+                        "description": "Where the sizes of global labels (from definition until the next global label or end of section) should be displayed.",
+                        "type": "string",
+                        "enum": [
+                            "codelens",
+                            "hover",
+                            "all",
+                            "none"
+                        ],
+                        "default": "hover"
+                    },
+                    "hgbasm.analysis.localLabelOffsets": {
+                        "description": "Where the offsets of local labels (relative to their section) should be displayed.",
+                        "type": "string",
+                        "enum": [
+                            "codelens",
+                            "hover",
+                            "all",
+                            "none"
+                        ],
+                        "default": "none"
+                    },
+                    "hgbasm.analysis.localLabelSizes": {
+                        "description": "Where the sizes of local labels (from definition until the next global label, local label, or end of section) should be displayed.",
+                        "type": "string",
+                        "enum": [
+                            "codelens",
+                            "hover",
+                            "all",
+                            "none"
+                        ],
+                        "default": "none"
+                    },
+                    "hgbasm.formatting.enabled": {
+                        "description": "Enable/disable automatic formatting.",
+                        "type": "boolean",
+                        "default": "true"
+                    },
+                    "hgbasm.formatting.keywords": {
+                        "description": "How keywords (INCLUDE, SECTION, IF, etc.) should be capitalized.",
+                        "type": "string",
+                        "enum": [
+                            "uppercase",
+                            "lowercase",
+                            "preserve"
+                        ],
+                        "default": "preserve"
+                    },
+                    "hgbasm.formatting.opcodes": {
+                        "description": "How opcodes (LD, ADD, JMP, etc.) should be capitalized.",
+                        "type": "string",
+                        "enum": [
+                            "uppercase",
+                            "lowercase",
+                            "preserve"
+                        ],
+                        "default": "preserve"
+                    },
+                    "hgbasm.formatting.psuedoOps": {
+                        "description": "How psuedo-opcodes (DS, DB, RW, etc.) should be capitalized.",
+                        "type": "string",
+                        "enum": [
+                            "uppercase",
+                            "lowercase",
+                            "preserve"
+                        ],
+                        "default": "preserve"
+                    },
+                    "hgbasm.formatting.conditionCodes": {
+                        "description": "How condition codes (C, NC, Z, NZ) should be capitalized.",
+                        "type": "string",
+                        "enum": [
+                            "uppercase",
+                            "lowercase",
+                            "preserve"
+                        ],
+                        "default": "preserve"
+                    },
+                    "hgbasm.formatting.registers": {
+                        "description": "How registers (A, B, HL, SP, etc.) should be capitalized.",
+                        "type": "string",
+                        "enum": [
+                            "uppercase",
+                            "lowercase",
+                            "preserve"
+                        ],
+                        "default": "preserve"
+                    },
+                    "hgbasm.formatting.functions": {
+                        "description": "How functions (STRCAT, MUL, HIGH, etc.) should be capitalized.",
+                        "type": "string",
+                        "enum": [
+                            "uppercase",
+                            "lowercase",
+                            "preserve"
+                        ],
+                        "default": "preserve"
+                    },
+                    "hgbasm.formatting.regions": {
+                        "description": "How memory regions (ROM0, WRAMX, HRAM, etc.) should be capitalized.",
+                        "type": "string",
+                        "enum": [
+                            "uppercase",
+                            "lowercase",
+                            "preserve"
+                        ],
+                        "default": "preserve"
+                    },
+                    "hgbasm.formatting.hexLetters": {
+                        "description": "How letters in hex number literals ($FFFF, $12E4, $D3, etc.) should be capitalized.",
+                        "type": "string",
+                        "enum": [
+                            "uppercase",
+                            "lowercase",
+                            "preserve"
+                        ],
+                        "default": "preserve"
+                    },
+                    "autoComplete.keywords": {
+                        "description": "Whether to include keywords in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.instructions": {
+                        "description": "Whether to include instruction snippets in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.functions": {
+                        "description": "Whether to include functions in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.regions": {
+                        "description": "Whether to include memory regions in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.predefines": {
+                        "description": "Whether to include predefined equates in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.numberEquates": {
+                        "description": "Whether to include defined number equates in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.stringEquates": {
+                        "description": "Whether to include defined string equates in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.sets": {
+                        "description": "Whether to include defined sets in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.labels": {
+                        "description": "Whether to include defined labels in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "autoComplete.macros": {
+                        "description": "Whether to include defined macros in the auto-completion list.",
+                        "type": "boolean",
+                        "default": true
+                    }
+                }
+            }
+        ],
         "languages": [
             {
                 "id": "hgbasm",
@@ -41,7 +253,8 @@
                     ".z80",
                     ".gbz80",
                     ".sm83",
-                    ".hgb"
+                    ".hgb",
+                    ".link"
                 ],
                 "aliases": [
                     "hgbasm",
@@ -57,6 +270,12 @@
                 "language": "hgbasm",
                 "scopeName": "source.hgbasm",
                 "path": "./hgbasm.tmLanguage.json"
+            }
+        ],
+        "jsonValidation": [
+            {
+                "fileMatch": "gbconfig.json",
+                "url": "./gbconfig.schema.json"
             }
         ]
     },
@@ -75,7 +294,9 @@
         "vscode": "^1.1.21"
     },
     "dependencies": {
+        "@types/glob": "^7.1.1",
         "fs-extra": "^8.0.1",
-        "hgbasm": "^1.10.1"
+        "glob": "^7.1.4",
+        "hgbasm": "^1.14.9"
     }
 }
