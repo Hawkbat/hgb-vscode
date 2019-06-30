@@ -940,7 +940,7 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
 
                 const local = id.includes('.')
                 const showLabelSize = (local && (localLabelSizes === 'codelens' || localLabelSizes === 'all')) || (!local && (globalLabelSizes === 'codelens' || globalLabelSizes === 'all'))
-                const showLabelOffset = (local && (localLabelOffsets === 'hover' || localLabelOffsets === 'all')) || (!local && (globalLabelOffsets === 'hover' || globalLabelOffsets === 'all'))
+                const showLabelOffset = (local && (localLabelOffsets === 'codelens' || localLabelOffsets === 'all')) || (!local && (globalLabelOffsets === 'codelens' || globalLabelOffsets === 'all'))
 
                 if (showLabelSize) {
                     items.push(new v.CodeLens(range, { title: new DocString().write('Size in bytes:').hex(label.byteSize).dec(label.byteSize).parenthesized().toString(), command: '' }))
