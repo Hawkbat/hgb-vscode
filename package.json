@@ -189,52 +189,52 @@
                         ],
                         "default": "preserve"
                     },
-                    "autoComplete.keywords": {
+                    "hgbasm.autoComplete.keywords": {
                         "description": "Whether to include keywords in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.instructions": {
+                    "hgbasm.autoComplete.instructions": {
                         "description": "Whether to include instruction snippets in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.functions": {
+                    "hgbasm.autoComplete.functions": {
                         "description": "Whether to include functions in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.regions": {
+                    "hgbasm.autoComplete.regions": {
                         "description": "Whether to include memory regions in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.predefines": {
+                    "hgbasm.autoComplete.predefines": {
                         "description": "Whether to include predefined equates in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.numberEquates": {
+                    "hgbasm.autoComplete.numberEquates": {
                         "description": "Whether to include defined number equates in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.stringEquates": {
+                    "hgbasm.autoComplete.stringEquates": {
                         "description": "Whether to include defined string equates in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.sets": {
+                    "hgbasm.autoComplete.sets": {
                         "description": "Whether to include defined sets in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.labels": {
+                    "hgbasm.autoComplete.labels": {
                         "description": "Whether to include defined labels in the auto-completion list.",
                         "type": "boolean",
                         "default": true
                     },
-                    "autoComplete.macros": {
+                    "hgbasm.autoComplete.macros": {
                         "description": "Whether to include defined macros in the auto-completion list.",
                         "type": "boolean",
                         "default": true
