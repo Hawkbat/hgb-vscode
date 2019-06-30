@@ -1,6 +1,6 @@
 # hgbasm
 
-This extension provides editing capabilities powered by the [hgbasm](https://github.com/Hawkbat/hgbasm) compiler, which supports the RGBDS assembly language for Game Boy as well as hgbasm-specific language extensions.
+This extension provides editing capabilities powered by the [hgbasm](https://github.com/Hawkbat/hgbasm) compiler, which supports the RGBDS assembly language for Game Boy as well as hgbasm-specific language extensions. The extension can be installed from [here](https://marketplace.visualstudio.com/items?itemName=Hawkbat.hgbasm-vscode).
 
 ## Features
 
