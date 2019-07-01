@@ -17,7 +17,7 @@ export interface ISettings {
     'hgbasm.formatting.enabled': boolean,
     'hgbasm.formatting.keywords': CapsStyle,
     'hgbasm.formatting.opcodes': CapsStyle,
-    'hgbasm.formatting.psuedoOps': CapsStyle,
+    'hgbasm.formatting.pseudoOps': CapsStyle,
     'hgbasm.formatting.conditionCodes': CapsStyle,
     'hgbasm.formatting.registers': CapsStyle,
     'hgbasm.formatting.functions': CapsStyle,

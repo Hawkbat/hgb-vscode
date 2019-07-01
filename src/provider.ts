@@ -1012,7 +1012,7 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                 hexLetterCase: getSetting('hgbasm.formatting.hexLetters'),
                 keywordCase: getSetting('hgbasm.formatting.keywords'),
                 opcodeCase: getSetting('hgbasm.formatting.opcodes'),
-                psuedoOpCase: getSetting('hgbasm.formatting.psuedoOps'),
+                pseudoOpCase: getSetting('hgbasm.formatting.pseudoOps'),
                 regionCase: getSetting('hgbasm.formatting.regions'),
                 registerCase: getSetting('hgbasm.formatting.registers')
             }

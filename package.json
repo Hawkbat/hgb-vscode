@@ -129,8 +129,8 @@
                         ],
                         "default": "preserve"
                     },
-                    "hgbasm.formatting.psuedoOps": {
-                        "description": "How psuedo-opcodes (DS, DB, RW, etc.) should be capitalized.",
+                    "hgbasm.formatting.pseudoOps": {
+                        "description": "How pseudo-opcodes (DS, DB, RW, etc.) should be capitalized.",
                         "type": "string",
                         "enum": [
                             "uppercase",

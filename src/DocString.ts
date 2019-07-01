@@ -212,8 +212,8 @@ export default class DocString {
         return this
     }
 
-    public psuedoOp(id: string): this {
-        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.psuedoOps'))}`)
+    public pseudoOp(id: string): this {
+        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.pseudoOps'))}`)
         return this
     }
 

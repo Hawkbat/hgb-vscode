@@ -464,8 +464,8 @@
                                 "preserve"
                             ]
                         },
-                        "psuedoOpCase": {
-                            "description": "How psuedo-opcodes (DS, DB, RW, etc.) should be capitalized. If omitted, defaults to 'preserve'.",
+                        "pseudoOpCase": {
+                            "description": "How pseudo-opcodes (DS, DB, RW, etc.) should be capitalized. If omitted, defaults to 'preserve'.",
                             "type": "string",
                             "enum": [
                                 "uppercase",
