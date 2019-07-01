@@ -68,7 +68,7 @@
         },
         {
             "name": "support.type",
-            "match": "(?i)\\b(?:a|f|b|c|d|e|h|l|af|bc|de|hli|hld|hl\\+|hl\\-|hl|sp|pc|z|nz|c|nc)\\b"
+            "match": "(?i)\\b(?:a|b|c|d|e|h|l|af|bc|de|hli|hld|hl\\+|hl\\-|hl|sp|pc|z|nz|c|nc)\\b"
         },
         {
             "name": "variable",
