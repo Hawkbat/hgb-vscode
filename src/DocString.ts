@@ -1,5 +1,7 @@
+import CasingStyle from 'hgbasm/lib/Formatter/CasingStyle'
 import * as v from 'vscode'
-import { CapsStyle, getSetting, LANGUAGE_ID } from './Settings'
+import Provider from './Provider'
+import { LANGUAGE_ID } from './Settings'
 
 // tslint:disable: max-classes-per-file
 
@@ -22,7 +24,7 @@ function align(str: string, width: number, alignment: Align): string {
     }
 }
 
-function capitalize(str: string, style: CapsStyle): string {
+function capitalize(str: string, style: CasingStyle): string {
     switch (style) {
         case 'uppercase':
             return str.toUpperCase()
@@ -42,11 +44,16 @@ interface ILine {
 }
 
 export default class DocString {
+    private provider: Provider
     private lines: ILine[] = []
     private currentLine: ILine = {
         tokens: [],
         align: 'left',
         language: ''
+    }
+
+    constructor(provider: Provider) {
+        this.provider = provider
     }
 
     public write(str: string): this {
@@ -203,37 +210,37 @@ export default class DocString {
     }
 
     public keyword(id: string): this {
-        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.keywords'))}`)
+        this.currentLine.tokens.push(`${capitalize(id, this.provider.host.getFormatterSettings().keywordCase)}`)
         return this
     }
 
     public opcode(id: string): this {
-        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.opcodes'))}`)
+        this.currentLine.tokens.push(`${capitalize(id, this.provider.host.getFormatterSettings().opcodeCase)}`)
         return this
     }
 
     public pseudoOp(id: string): this {
-        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.pseudoOps'))}`)
+        this.currentLine.tokens.push(`${capitalize(id, this.provider.host.getFormatterSettings().pseudoOpCase)}`)
         return this
     }
 
     public conditionCode(id: string): this {
-        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.conditionCodes'))}`)
+        this.currentLine.tokens.push(`${capitalize(id, this.provider.host.getFormatterSettings().conditionCodeCase)}`)
         return this
     }
 
     public register(id: string): this {
-        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.registers'))}`)
+        this.currentLine.tokens.push(`${capitalize(id, this.provider.host.getFormatterSettings().registerCase)}`)
         return this
     }
 
     public function(id: string): this {
-        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.functions'))}`)
+        this.currentLine.tokens.push(`${capitalize(id, this.provider.host.getFormatterSettings().functionCase)}`)
         return this
     }
 
     public region(id: string): this {
-        this.currentLine.tokens.push(`${capitalize(id, getSetting('hgbasm.formatting.regions'))}`)
+        this.currentLine.tokens.push(`${capitalize(id, this.provider.host.getFormatterSettings().regionCase)}`)
         return this
     }
 
@@ -253,7 +260,7 @@ export default class DocString {
     }
 
     public hex(n: number): this {
-        this.currentLine.tokens.push(`$${capitalize(zeroPad(n.toString(16), 2), getSetting('hgbasm.formatting.hexLetters'))}`)
+        this.currentLine.tokens.push(`$${capitalize(zeroPad(n.toString(16), 2), this.provider.host.getFormatterSettings().hexLetterCase)}`)
         return this
     }
 

@@ -1,12 +1,9 @@
 import * as fs from 'fs-extra'
 import * as glob from 'glob'
-import { AsmFile, AssemblerContext, IFileProvider, ILogPipe } from 'hgbasm'
+import { AsmFile, AssemblerContext, FileContext, IFileProvider, ILogPipe } from 'hgbasm'
 import FunctionRules from 'hgbasm/lib/Evaluator/FunctionRules'
-import KeywordRules from 'hgbasm/lib/Evaluator/KeywordRules'
 import OpRules from 'hgbasm/lib/Evaluator/OpRules'
 import PredefineRules from 'hgbasm/lib/Evaluator/PredefineRules'
-import IFormatterOptions from 'hgbasm/lib/Formatter/IFormatterOptions'
-import IProjectFile from 'hgbasm/lib/IProjectFile'
 import IVersion from 'hgbasm/lib/IVersion'
 import ISymbol from 'hgbasm/lib/LineState/ISymbol'
 import RegionType from 'hgbasm/lib/Linker/RegionType'
@@ -16,37 +13,50 @@ import TokenType from 'hgbasm/lib/TokenType'
 import * as pathUtil from 'path'
 import * as v from 'vscode'
 import DocString from './DocString'
+import { GameBoyProject } from './GameBoyProject'
 import Host from './Host'
 import { getSetting, LANGUAGE_ID } from './Settings'
 
 export default class Provider implements v.CompletionItemProvider, v.HoverProvider, v.SignatureHelpProvider, v.DefinitionProvider, v.ReferenceProvider, v.DocumentHighlightProvider, v.DocumentSymbolProvider, v.WorkspaceSymbolProvider, v.CodeActionProvider, v.CodeLensProvider, v.FoldingRangeProvider, v.DocumentColorProvider, v.DocumentFormattingEditProvider, v.DocumentRangeFormattingEditProvider, v.OnTypeFormattingEditProvider, v.RenameProvider, ILogPipe, IFileProvider {
-    public allowAnsi: boolean = true
+    public ctx: v.ExtensionContext | null = null
+    public allowAnsi: boolean = false
     public host: Host
     public diagnostics: v.DiagnosticCollection | undefined
     public onDidChangeCodeLenses?: v.Event<void> | undefined
-    private includeFolderCache: string[] | null = null
 
     constructor() {
         this.host = new Host(this)
     }
 
+    public error(msg: string): Promise<void> {
+        console.error(msg)
+        process.stderr.write(msg)
+        return new Promise((res, rej) => {
+            setTimeout(() => {
+                res()
+            }, 100)
+        })
+    }
+
     public log(msg: string, type: string): void {
         if (type === 'error' || type === 'fatal') {
-            // tslint:disable-next-line: no-console
             console.error(msg)
+            process.stderr.write(msg)
         } else {
-            // tslint:disable-next-line: no-console
             console.log(msg)
+            process.stdout.write(msg)
         }
     }
 
     public async retrieve(path: string, sender: AsmFile, binary: boolean): Promise<AsmFile | null> {
+        const senderFile = this.host.getFile(sender.path)
         if (v.workspace.workspaceFolders) {
             for (const rootFolder of v.workspace.workspaceFolders.map(f => f.uri.fsPath)) {
-                if (!this.includeFolderCache) {
-                    this.includeFolderCache = glob.sync(getSetting('hgbasm.project.includePath'), { cwd: rootFolder }).map(folder => pathUtil.resolve(rootFolder, folder))
+                const includeFolders = []
+                for (const incPath of this.host.getIncludePaths()) {
+                    includeFolders.push(...glob.sync(incPath, { cwd: rootFolder }).map(folder => pathUtil.resolve(rootFolder, folder)))
                 }
-                const includeFolders = this.includeFolderCache
+
                 const filePaths = [
                     pathUtil.resolve(rootFolder, path),
                     pathUtil.resolve(pathUtil.dirname(sender.path), path),
@@ -54,14 +64,12 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                 ]
                 const cachedFiles = filePaths.map(filePath => this.host.getFile(filePath)).filter(f => f !== null)
                 if (cachedFiles.length) {
-                    return cachedFiles[0]
+                    return cachedFiles[0]!.file
                 }
                 for (const filePath of filePaths) {
-                    try {
-                        const contents = await fs.readFile(filePath, binary ? 'binary' : 'utf8')
-                        return this.host.register(filePath, contents)
-                    } catch (_) {
-                        // file does not exist or could not be accessed; continue
+                    if (fs.existsSync(filePath)) {
+                        const contents = fs.readFileSync(filePath, binary ? 'binary' : 'utf8')
+                        return this.host.register(filePath, contents, senderFile).file
                     }
                 }
             }
@@ -70,12 +78,14 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public activate(ctx: v.ExtensionContext): void {
+        this.ctx = ctx
+
         this.diagnostics = v.languages.createDiagnosticCollection(LANGUAGE_ID)
         ctx.subscriptions.push(this.diagnostics)
 
         if (v.workspace.workspaceFolders) {
             for (const rootFolder of v.workspace.workspaceFolders) {
-                const projectPattern = new v.RelativePattern(rootFolder, getSetting('hgbasm.project.configPath'))
+                const projectPattern = new v.RelativePattern(rootFolder, '**/gbconfig.json')
 
                 v.workspace.findFiles(projectPattern).then(uris => {
                     for (const uri of uris) {
@@ -87,20 +97,6 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                 projectWatcher.onDidChange(uri => v.workspace.openTextDocument(uri).then(doc => this.updateProjectSettings(doc)))
                 projectWatcher.onDidCreate(uri => v.workspace.openTextDocument(uri).then(doc => this.updateProjectSettings(doc)))
                 projectWatcher.onDidDelete(uri => this.clearProjectSettings())
-
-                const srcPattern = new v.RelativePattern(rootFolder, getSetting('hgbasm.project.sourcePath'))
-
-                v.workspace.findFiles(srcPattern).then(uris => {
-                    for (const uri of uris) {
-                        v.workspace.openTextDocument(uri).then(doc => this.updateDocument(doc))
-                    }
-                })
-
-                const srcWatcher = v.workspace.createFileSystemWatcher(srcPattern)
-                srcWatcher.onDidChange(uri => v.workspace.openTextDocument(uri).then(doc => this.updateDocument(doc)))
-                srcWatcher.onDidCreate(uri => v.workspace.openTextDocument(uri).then(doc => this.updateDocument(doc)))
-                srcWatcher.onDidDelete(uri => this.unloadFile(uri))
-                ctx.subscriptions.push(srcWatcher)
             }
         }
 
@@ -140,7 +136,35 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async updateProjectSettings(doc: v.TextDocument): Promise<void> {
-        this.host.setProject(JSON.parse(doc.getText()) as IProjectFile)
+        let projectFile: GameBoyProject = {}
+        try {
+            projectFile = JSON.parse(doc.getText())
+        } catch (e) {
+            return
+        }
+        this.host.setProject(projectFile)
+
+        if (v.workspace.workspaceFolders) {
+            for (const rootFolder of v.workspace.workspaceFolders) {
+                for (const srcPath of this.host.getSourcePaths()) {
+                    const srcPattern = new v.RelativePattern(rootFolder, srcPath)
+
+                    v.workspace.findFiles(srcPattern).then(uris => {
+                        for (const uri of uris) {
+                            v.workspace.openTextDocument(uri).then(d => this.updateDocument(d))
+                        }
+                    })
+
+                    if (this.ctx) {
+                        const srcWatcher = v.workspace.createFileSystemWatcher(srcPattern)
+                        srcWatcher.onDidChange(uri => v.workspace.openTextDocument(uri).then(d => this.updateDocument(d)))
+                        srcWatcher.onDidCreate(uri => v.workspace.openTextDocument(uri).then(d => this.updateDocument(d)))
+                        srcWatcher.onDidDelete(uri => this.unloadFile(uri))
+                        this.ctx.subscriptions.push(srcWatcher)
+                    }
+                }
+            }
+        }
         this.compileAllSourceFiles()
     }
 
@@ -153,40 +177,41 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         if (doc.languageId !== LANGUAGE_ID || doc.uri.fsPath.endsWith('.git')) {
             return
         }
-        const result = await this.compileDoc(doc, true)
-        if (this.diagnostics) {
-            this.diagnostics.set(doc.uri, result.diagnostics.filter(d => {
-                const path = d.line ? d.line.file.source.path : null
-                return path === doc.uri.fsPath
-            }).map(d => {
-                const startLine = d.line ? d.line.lineNumber : d.token ? d.token.line : 0
-                const endLine = startLine
-                const startCol = d.token ? d.token.col : 0
-                const endCol = d.token ? d.token.col + d.token.value.length : Infinity
-
-                const severity = d.type === 'error' ? v.DiagnosticSeverity.Error :
-                    d.type === 'warn' ? v.DiagnosticSeverity.Warning :
-                        v.DiagnosticSeverity.Information
-                return new v.Diagnostic(new v.Range(startLine, startCol, endLine, endCol), d.msg, severity)
-            }))
-        }
+        this.host.register(doc.uri.fsPath, doc.getText())
+        await this.assembleDoc(doc)
     }
 
-    public async compileDoc(doc: v.TextDocument, reload: boolean = false): Promise<AssemblerContext> {
-        this.includeFolderCache = null
-        if (reload || !this.host.getFile(doc.uri.fsPath)) {
+    public async assembleDoc(doc: v.TextDocument): Promise<AssemblerContext | null> {
+        if (!this.host.getFile(doc.uri.fsPath)) {
             this.host.register(doc.uri.fsPath, doc.getText())
         }
-        return this.host.assemble(doc.uri.fsPath)
+        const result = await this.host.assemble(doc.uri.fsPath, false)
+        if (!result) {
+            return null
+        }
+        if (result && this.diagnostics) {
+            for (const uri of [doc.uri, ...result.dependencies.map(d => v.Uri.file(d.path))]) {
+                this.diagnostics.set(uri, result.diagnostics.filter(d => {
+                    const path = d.line ? d.line.file.source.path : null
+                    return path === uri.fsPath
+                }).map(d => {
+                    const startLine = d.line ? d.line.lineNumber : d.token ? d.token.line : 0
+                    const endLine = startLine
+                    const startCol = d.token ? d.token.col : 0
+                    const endCol = d.token ? d.token.col + d.token.value.length : Infinity
+
+                    const severity = d.type === 'error' ? v.DiagnosticSeverity.Error :
+                        d.type === 'warn' ? v.DiagnosticSeverity.Warning :
+                            v.DiagnosticSeverity.Information
+                    return new v.Diagnostic(new v.Range(startLine, startCol, endLine, endCol), d.msg, severity)
+                }))
+            }
+        }
+        return result
     }
 
-    public async compileFile(uri: v.Uri, reload: boolean = false): Promise<AssemblerContext> {
-        this.includeFolderCache = null
-        if (reload || !this.host.getFile(uri.fsPath)) {
-            const doc = await v.workspace.openTextDocument(uri)
-            this.host.register(doc.uri.fsPath, doc.getText())
-        }
-        return this.host.assemble(uri.fsPath)
+    public async assembleFile(uri: v.Uri): Promise<AssemblerContext | null> {
+        return this.assembleDoc(await v.workspace.openTextDocument(uri))
     }
 
     public unloadFile(uri: v.Uri): void {
@@ -199,22 +224,25 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
             return ''
         }
         let docs = ''
-        if (file.lines[line].text.includes(';')) {
-            docs += `${file.lines[line].text.substr(file.lines[line].text.indexOf(';')).substr(1).trim()}\n`
+        const lines = file.file.lines
+        if (lines[line].text.includes(';')) {
+            docs += `${lines[line].text.substr(lines[line].text.indexOf(';')).substr(1).trim()}\n`
         }
-        while (line > 0 && file.lines[--line].text.trim().startsWith(';')) {
-            if (file.lines[line].text.startsWith(';*')) {
+        while (line > 0 && lines[--line].text.trim().startsWith(';')) {
+            if (lines[line].text.startsWith(';*')) {
                 break
             }
-            docs = `${file.lines[line].text.substr(1).trim()}\n${docs}`
+            docs = `${lines[line].text.substr(1).trim()}\n${docs}`
         }
         return docs
     }
 
     public async getToken(doc: v.TextDocument, pos: v.Position): Promise<Token | null> {
-        const result = await this.compileDoc(doc)
-
-        const lexCtx = result.file.lines[pos.line].lex
+        const file = await this.getFileContext(doc)
+        if (!file) {
+            return null
+        }
+        const lexCtx = file.lines[pos.line].lex
         if (lexCtx) {
             const tokens = lexCtx.tokens.filter(t => t.type !== TokenType.space && t.col <= pos.character && t.col + t.value.length > pos.character)
             if (tokens.length > 0) {
@@ -225,33 +253,30 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         return null
     }
 
-    public getSymbol(token: Token, result: AssemblerContext, includeImports: boolean = false): ISymbol | null {
-        const evalCtx = result.file.lines[token.line].eval
-        if (!evalCtx) {
-            return null
-        }
+    public getSymbol(token: Token, result: AssemblerContext, file: FileContext, includeImports: boolean = false): ISymbol | null {
+        const evalCtx = file.lines[token.line].eval
         if (token.type === TokenType.identifier || token.type === TokenType.macro_call || token.type === TokenType.macro_argument) {
             let id = token.value.trim()
             if (id.includes(':')) {
                 id = id.substring(0, id.indexOf(':'))
             }
-            if (id.charAt(0) === '.') {
+            if (evalCtx && id.charAt(0) === '.') {
                 id = evalCtx.meta.inGlobalLabel + id
             }
-            if (evalCtx.state.numberEquates && evalCtx.state.numberEquates[id]) {
-                return evalCtx.state.numberEquates[id]
+            if (result.state.numberEquates && result.state.numberEquates[id]) {
+                return result.state.numberEquates[id]
             }
-            if (evalCtx.state.stringEquates && evalCtx.state.stringEquates[id]) {
-                return evalCtx.state.stringEquates[id]
+            if (result.state.stringEquates && result.state.stringEquates[id]) {
+                return result.state.stringEquates[id]
             }
-            if (evalCtx.state.sets && evalCtx.state.sets[id]) {
-                return evalCtx.state.sets[id]
+            if (result.state.sets && result.state.sets[id]) {
+                return result.state.sets[id]
             }
-            if (evalCtx.state.labels && evalCtx.state.labels[id]) {
-                return evalCtx.state.labels[id]
+            if (result.state.labels && result.state.labels[id]) {
+                return result.state.labels[id]
             }
-            if (evalCtx.state.macros && evalCtx.state.macros[id]) {
-                return evalCtx.state.macros[id]
+            if (result.state.macros && result.state.macros[id]) {
+                return result.state.macros[id]
             }
             if (includeImports) {
                 const symbol = result.objectFile.symbols.find(s => s.name === id && s.type === SymbolType.Imported)
@@ -272,13 +297,30 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         const results: AssemblerContext[] = []
         if (v.workspace.workspaceFolders) {
             for (const rootFolder of v.workspace.workspaceFolders) {
-                const uris = await v.workspace.findFiles(new v.RelativePattern(rootFolder, getSetting('hgbasm.project.sourcePath')))
-                for (const uri of uris) {
-                    results.push(await this.compileFile(uri))
+                for (const srcPath of this.host.getSourcePaths()) {
+                    const uris = await v.workspace.findFiles(new v.RelativePattern(rootFolder, srcPath))
+                    for (const uri of uris) {
+                        const result = await this.assembleFile(uri)
+                        if (result) {
+                            results.push(result)
+                        }
+                    }
                 }
             }
         }
         return results
+    }
+
+    public async getFileContext(doc: v.TextDocument): Promise<FileContext | null> {
+        const ctx = await this.assembleDoc(doc)
+        if (!ctx) {
+            return null
+        }
+        return this.host.getFileContext(doc.uri.fsPath, ctx)
+    }
+
+    public getSymbolRange(symbol: ISymbol, file: FileContext): v.Range {
+        return new v.Range(symbol.startLine, 0, symbol.endLine, file.lines[symbol.endLine].source.text.length)
     }
 
     public getCompletionItem(symbol: ISymbol, kind: v.CompletionItemKind): v.CompletionItem {
@@ -291,105 +333,108 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideCompletionItems(doc: v.TextDocument, pos: v.Position, cancelToken: v.CancellationToken, context: v.CompletionContext): Promise<v.CompletionItem[] | v.CompletionList | null | undefined> {
-        const result = await this.compileDoc(doc)
-        const evalCtx = result.file.lines[pos.line].eval
         const items: v.CompletionItem[] = []
 
-        if (getSetting('hgbasm.autoComplete.keywords')) {
-            for (const keyword of Object.keys(KeywordRules)) {
-                items.push(new v.CompletionItem(new DocString().keyword(keyword.toUpperCase()).toString(), v.CompletionItemKind.Keyword))
-            }
+        let token: Token | null = null
+        while (!token && pos.character > 0) {
+            pos = pos.translate(0, -1)
+            token = await this.getToken(doc, pos)
         }
 
-        if (pos.character > 0) {
-            items.push(new v.CompletionItem('@', v.CompletionItemKind.Variable))
-            if (getSetting('hgbasm.autoComplete.instructions')) {
-                for (const id of Object.keys(OpRules)) {
-                    for (const op of OpRules[id]) {
-                        const label = new DocString().opcode(id).each(op.args, (s, p) => s.param(p), s => s.comma()).toString()
-                        const item = new v.CompletionItem(label, v.CompletionItemKind.Snippet)
-                        // tslint:disable-next-line: no-invalid-template-strings
-                        item.insertText = new v.SnippetString(label.replace(/(?<!:)(n8|n16|e8|u3|vec)/, '${1:$1}').replace(/(?<!:)(n8|n16|e8|u3|vec)/, '${2:$1}'))
-                        item.detail = new DocString()
-                            .line(op.desc)
-                            .newline()
-                            .write('Bytes:').dec(op.bytes).newline()
-                            .write('Cycles:').write(`${op.conditionalCycles ? `${op.conditionalCycles}/` : ''}${op.cycles}`).newline()
-                            .newline()
-                            .write('Flags:').if(!op.flags, s => s.write('No flags affected')).newline()
-                            .if(!!op.flags && !!op.flags.z, s => s.write('Z:').write(op.flags!.z!).newline())
-                            .if(!!op.flags && !!op.flags.n, s => s.write('N:').write(op.flags!.n!).newline())
-                            .if(!!op.flags && !!op.flags.h, s => s.write('H:').write(op.flags!.h!).newline())
-                            .if(!!op.flags && !!op.flags.c, s => s.write('C:').write(op.flags!.c!).newline())
-                            .toString()
-                        items.push(item)
-                    }
-                }
+        const ctx = await this.host.autoComplete(doc.uri.fsPath, token)
+        if (!ctx) {
+            return null
+        }
+        if (!ctx.results) {
+            return items
+        }
+
+        if (ctx.results.keywords) {
+            for (const keyword of Object.keys(ctx.results.keywords)) {
+                items.push(new v.CompletionItem(new DocString(this).keyword(keyword).toString(), v.CompletionItemKind.Keyword))
             }
-            if (getSetting('hgbasm.autoComplete.functions')) {
-                for (const id of Object.keys(FunctionRules)) {
-                    const rule = FunctionRules[id]
-                    const label = new DocString().function(id).write(rule.params.map(p => p.name).join(', ')).parenthesized().append().toString()
-                    const item = new v.CompletionItem(label, v.CompletionItemKind.Function)
-                    const snippet = new DocString().function(id).write(rule.params.map((p, i) => `\$${i + 1}:${p.name}}`).join(', ')).parenthesized().append().toString()
-                    item.insertText = new v.SnippetString(snippet)
-                    item.detail = new DocString()
-                        .function(id).write(rule.params.map(p => `${p.name}: ${p.type}`).join(', ')).parenthesized().append().newline()
+        }
+        if (ctx.results.instructions) {
+            for (const id of Object.keys(ctx.results.instructions)) {
+                for (const op of OpRules[id]) {
+                    const label = new DocString(this).opcode(id).each(op.args, (s, p) => s.param(p), s => s.comma()).toString()
+                    const item = new v.CompletionItem(label, v.CompletionItemKind.Snippet)
+                    // tslint:disable-next-line: no-invalid-template-strings
+                    item.insertText = new v.SnippetString(label.replace(/(?<!:)(n8|n16|e8|u3|vec)/, '${1:$1}').replace(/(?<!:)(n8|n16|e8|u3|vec)/, '${2:$1}'))
+                    item.detail = new DocString(this)
+                        .line(op.desc)
                         .newline()
-                        .line(rule.desc)
+                        .write('Bytes:').dec(op.bytes).newline()
+                        .write('Cycles:').write(`${op.conditionalCycles ? `${op.conditionalCycles}/` : ''}${op.cycles}`).newline()
                         .newline()
-                        .write('Returns:').write(rule.return.desc).newline()
+                        .write('Flags:').if(!op.flags, s => s.write('No flags affected')).newline()
+                        .if(!!op.flags && !!op.flags.z, s => s.write('Z:').write(op.flags!.z!).newline())
+                        .if(!!op.flags && !!op.flags.n, s => s.write('N:').write(op.flags!.n!).newline())
+                        .if(!!op.flags && !!op.flags.h, s => s.write('H:').write(op.flags!.h!).newline())
+                        .if(!!op.flags && !!op.flags.c, s => s.write('C:').write(op.flags!.c!).newline())
                         .toString()
-                    item.command = { title: '', command: 'editor.action.triggerParameterHints' }
                     items.push(item)
                 }
             }
-            if (getSetting('hgbasm.autoComplete.predefines')) {
-                for (const id of Object.keys(PredefineRules)) {
-                    items.push(new v.CompletionItem(id, v.CompletionItemKind.Constant))
-                }
-            }
-            if (getSetting('hgbasm.autoComplete.regions')) {
-                for (const id of Object.keys(RegionType)) {
-                    if (parseInt(id, 10).toString() !== id) {
-                        items.push(new v.CompletionItem(new DocString().region(id).toString(), v.CompletionItemKind.EnumMember))
-                    }
-                }
-            }
-            if (evalCtx) {
-                if (evalCtx.state.numberEquates && getSetting('hgbasm.autoComplete.numberEquates')) {
-                    for (const id of Object.keys(evalCtx.state.numberEquates)) {
-                        items.push(this.getCompletionItem(evalCtx.state.numberEquates[id], v.CompletionItemKind.Constant))
-                    }
-                }
-                if (evalCtx.state.sets && getSetting('hgbasm.autoComplete.sets')) {
-                    for (const id of Object.keys(evalCtx.state.sets)) {
-                        items.push(this.getCompletionItem(evalCtx.state.sets[id], v.CompletionItemKind.Variable))
-                    }
-                }
-                if (evalCtx.state.labels && getSetting('hgbasm.autoComplete.labels')) {
-                    for (const id of Object.keys(evalCtx.state.labels)) {
-                        const label = evalCtx.state.labels[id]
-                        const item = this.getCompletionItem(label, v.CompletionItemKind.Variable)
-                        if (evalCtx.meta.inGlobalLabel && id.startsWith(evalCtx.meta.inGlobalLabel)) {
-                            item.label = id.substr(evalCtx.meta.inGlobalLabel.length)
-                        }
-                        items.push(item)
-                    }
-                }
-                if (evalCtx.state.macros && getSetting('hgbasm.autoComplete.macros')) {
-                    for (const id of Object.keys(evalCtx.state.macros)) {
-                        items.push(this.getCompletionItem(evalCtx.state.macros[id], v.CompletionItemKind.Function))
-                    }
-                }
+        }
+        if (ctx.results.functions) {
+            for (const id of Object.keys(ctx.results.functions)) {
+                const rule = FunctionRules[id]
+                const label = new DocString(this).function(id).write(rule.params.map(p => p.name).join(', ')).parenthesized().append().toString()
+                const item = new v.CompletionItem(label, v.CompletionItemKind.Function)
+                const snippet = new DocString(this).function(id).write(rule.params.map((p, i) => `\$${i + 1}:${p.name}}`).join(', ')).parenthesized().append().toString()
+                item.insertText = new v.SnippetString(snippet)
+                item.detail = new DocString(this)
+                    .function(id).write(rule.params.map(p => `${p.name}: ${p.type}`).join(', ')).parenthesized().append().newline()
+                    .newline()
+                    .line(rule.desc)
+                    .newline()
+                    .write('Returns:').write(rule.return.desc).newline()
+                    .toString()
+                item.command = { title: '', command: 'editor.action.triggerParameterHints' }
+                items.push(item)
             }
         }
-
-        if (evalCtx) {
-            if (evalCtx.state.stringEquates && getSetting('hgbasm.autoComplete.stringEquates')) {
-                for (const id of Object.keys(evalCtx.state.stringEquates)) {
-                    items.push(this.getCompletionItem(evalCtx.state.stringEquates[id], v.CompletionItemKind.Constant))
+        if (ctx.results.predefines) {
+            for (const id of Object.keys(ctx.results.predefines)) {
+                items.push(new v.CompletionItem(id, v.CompletionItemKind.Constant))
+            }
+        }
+        if (ctx.results.regions) {
+            for (const id of Object.keys(RegionType)) {
+                items.push(new v.CompletionItem(new DocString(this).region(id).toString(), v.CompletionItemKind.EnumMember))
+            }
+        }
+        if (ctx.results.numberEquates) {
+            for (const id of Object.keys(ctx.results.numberEquates)) {
+                items.push(this.getCompletionItem(ctx.results.numberEquates[id], v.CompletionItemKind.Constant))
+            }
+        }
+        if (ctx.results.sets) {
+            for (const id of Object.keys(ctx.results.sets)) {
+                items.push(this.getCompletionItem(ctx.results.sets[id], v.CompletionItemKind.Variable))
+            }
+        }
+        if (ctx.results.labels) {
+            const file = await this.getFileContext(doc)
+            const evalCtx = file ? file.lines[pos.line].eval : null
+            for (const id of Object.keys(ctx.results.labels)) {
+                const label = ctx.results.labels[id]
+                const item = this.getCompletionItem(label, v.CompletionItemKind.Variable)
+                if (evalCtx && evalCtx.meta.inGlobalLabel && id.startsWith(evalCtx.meta.inGlobalLabel)) {
+                    item.label = id.substr(evalCtx.meta.inGlobalLabel.length)
                 }
+                items.push(item)
+            }
+        }
+        if (ctx.results.macros) {
+            for (const id of Object.keys(ctx.results.macros)) {
+                items.push(this.getCompletionItem(ctx.results.macros[id], v.CompletionItemKind.Function))
+            }
+        }
+        if (ctx.results.stringEquates) {
+            for (const id of Object.keys(ctx.results.stringEquates)) {
+                items.push(this.getCompletionItem(ctx.results.stringEquates[id], v.CompletionItemKind.Constant))
             }
         }
 
@@ -397,12 +442,17 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideHover(doc: v.TextDocument, pos: v.Position, cancelToken: v.CancellationToken): Promise<v.Hover | null | undefined> {
-        const result = await this.compileDoc(doc)
+        const result = await this.assembleDoc(doc)
+        if (!result) {
+            return null
+        }
         const token = await this.getToken(doc, pos)
-
         if (!token) {
             return null
         }
+
+        const file = await this.getFileContext(doc)
+        const evalCtx = file ? file.lines[pos.line].eval : null
 
         switch (token.type) {
             case TokenType.binary_number:
@@ -423,84 +473,79 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                 } else {
                     n = parseFloat(token.value)
                 }
-                return new v.Hover(new DocString().code().numberVariants(n).toMarkdown())
+                return new v.Hover(new DocString(this).code().numberVariants(n).toMarkdown())
             }
             case TokenType.macro_call:
             case TokenType.identifier: {
-                const evalCtx = result.file.lines[pos.line].eval
-                if (evalCtx) {
-                    if (evalCtx.state.numberEquates) {
-                        const equ = evalCtx.state.numberEquates[token.value]
-                        if (equ) {
-                            return new v.Hover(new DocString()
-                                .text().line(this.getDocComments(equ.file, equ.startLine))
-                                .code().write(equ.id).keyword('EQU').hex(equ.value).newline()
-                                .numberVariants(equ.value)
-                                .toMarkdown())
-                        }
-                    }
-                    if (evalCtx.state.sets) {
-                        const set = evalCtx.state.sets[token.value]
-                        if (set) {
-                            return new v.Hover(new DocString()
-                                .text().line(this.getDocComments(set.file, set.startLine))
-                                .code().write(set.id).keyword('SET').hex(set.value).newline()
-                                .numberVariants(set.value)
-                                .toMarkdown())
-                        }
-                    }
-                    if (evalCtx.state.stringEquates) {
-                        const equs = evalCtx.state.stringEquates[token.value]
-                        if (equs) {
-                            return new v.Hover(new DocString()
-                                .text().line(this.getDocComments(equs.file, equs.startLine))
-                                .code().write(equs.id).keyword('EQUS').write(equs.value).quoted().newline()
-                                .toMarkdown())
-                        }
-                    }
-                    if (evalCtx.state.labels) {
-                        let id = token.value
-                        if (id.includes(':')) {
-                            id = id.substring(0, id.indexOf(':'))
-                        }
-                        if (id.charAt(0) === '.') {
-                            id = evalCtx.meta.inGlobalLabel + id
-                        }
-                        const label = evalCtx.state.labels[id]
-                        if (label) {
-                            const local = id.includes('.')
-                            const globalLabelSizes = getSetting('hgbasm.analysis.globalLabelSizes')
-                            const localLabelSizes = getSetting('hgbasm.analysis.localLabelSizes')
-                            const globalLabelOffsets = getSetting('hgbasm.analysis.globalLabelOffsets')
-                            const localLabelOffsets = getSetting('hgbasm.analysis.localLabelOffsets')
-                            const showLabelSize = (local && (localLabelSizes === 'hover' || localLabelSizes === 'all')) || (!local && (globalLabelSizes === 'hover' || globalLabelSizes === 'all'))
-                            const showLabelOffset = (local && (localLabelOffsets === 'hover' || localLabelOffsets === 'all')) || (!local && (globalLabelOffsets === 'hover' || globalLabelOffsets === 'all'))
-
-                            return new v.Hover(new DocString()
-                                .text().line(this.getDocComments(label.file, label.startLine))
-                                .code().if(label.exported, s => s.keyword('EXPORT')).write(label.id).newline()
-                                .if(showLabelSize, s => s.text().line('Size in bytes:').numberVariants(label.byteSize))
-                                .if(showLabelOffset, s => s.text().line('Offset in section:').numberVariants(label.byteOffset))
-                                .toMarkdown())
-                        }
-                    }
-                    if (evalCtx.state.macros) {
-                        const macro = evalCtx.state.macros[token.value]
-                        if (macro) {
-                            return new v.Hover(new DocString()
-                                .text().line(this.getDocComments(macro.file, macro.startLine))
-                                .code().write(macro.id).write(':').keyword('MACRO').newline()
-                                .toMarkdown())
-                        }
-                    }
-                    if (result.objectFile.symbols.some(s => s.name === token.value && s.type === SymbolType.Imported)) {
-                        return new v.Hover(new DocString()
-                            .code().keyword('import').parenthesized().write(token.value)
+                if (result.state.numberEquates) {
+                    const equ = result.state.numberEquates[token.value]
+                    if (equ) {
+                        return new v.Hover(new DocString(this)
+                            .if(!!this.getDocComments(equ.file, equ.startLine).trim(), s => s.text().line(this.getDocComments(equ.file, equ.startLine)))
+                            .code().write(equ.id).keyword('EQU').hex(equ.value).newline()
+                            .numberVariants(equ.value)
                             .toMarkdown())
                     }
                 }
+                if (result.state.sets) {
+                    const set = result.state.sets[token.value]
+                    if (set) {
+                        return new v.Hover(new DocString(this)
+                            .if(!!this.getDocComments(set.file, set.startLine).trim(), s => s.text().line(this.getDocComments(set.file, set.startLine)))
+                            .code().write(set.id).keyword('SET').hex(set.value).newline()
+                            .numberVariants(set.value)
+                            .toMarkdown())
+                    }
+                }
+                if (result.state.stringEquates) {
+                    const equs = result.state.stringEquates[token.value]
+                    if (equs) {
+                        return new v.Hover(new DocString(this)
+                            .if(!!this.getDocComments(equs.file, equs.startLine).trim(), s => s.text().line(this.getDocComments(equs.file, equs.startLine)))
+                            .code().write(equs.id).keyword('EQUS').write(equs.value).quoted().newline()
+                            .toMarkdown())
+                    }
+                }
+                if (result.state.labels) {
+                    let id = token.value
+                    if (id.includes(':')) {
+                        id = id.substring(0, id.indexOf(':'))
+                    }
+                    if (evalCtx && id.charAt(0) === '.') {
+                        id = evalCtx.meta.inGlobalLabel + id
+                    }
+                    const label = result.state.labels[id]
+                    if (label) {
+                        const analysis = await this.host.analyze(doc.uri.fsPath)
+                        const size = analysis && analysis.results ? analysis.results.labelSizes.find(r => r.symbol.id === id && (r.display === 'all' || r.display === 'hover')) : undefined
+                        const offset = analysis && analysis.results ? analysis.results.labelOffsets.find(r => r.symbol.id === id && (r.display === 'all' || r.display === 'hover')) : undefined
+
+                        return new v.Hover(new DocString(this)
+                            .if(!!this.getDocComments(label.file, label.startLine).trim(), s => s.text().line(this.getDocComments(label.file, label.startLine)))
+                            .code().if(label.exported, s => s.keyword('EXPORT')).write(label.id).newline()
+                            .if(getSetting('hgbasm.analysisHoverEnabled'), s => s
+                                .if(!!size, t => t.text().line('Size in bytes:').numberVariants(size!.value))
+                                .if(!!offset, t => t.text().line('Offset in section:').numberVariants(offset!.value))
+                            )
+                            .toMarkdown())
+                    }
+                }
+                if (result.state.macros) {
+                    const macro = result.state.macros[token.value]
+                    if (macro) {
+                        return new v.Hover(new DocString(this)
+                            .if(!!this.getDocComments(macro.file, macro.startLine).trim(), s => s.text().line(this.getDocComments(macro.file, macro.startLine)))
+                            .code().write(macro.id).write(':').keyword('MACRO').newline()
+                            .toMarkdown())
+                    }
+                }
+                if (result.objectFile.symbols.some(s => s.name === token.value && s.type === SymbolType.Imported)) {
+                    return new v.Hover(new DocString(this)
+                        .code().keyword('import').parenthesized().write(token.value)
+                        .toMarkdown())
+                }
                 if (PredefineRules[token.value]) {
-                    return new v.Hover(new DocString()
+                    return new v.Hover(new DocString(this)
                         .code().keyword('predefine').parenthesized().write(token.value)
                         .toMarkdown())
                 }
@@ -512,29 +557,28 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                 if (token.type === TokenType.keyword && val !== 'section' && val !== 'bank' && val !== 'align') {
                     break
                 }
-                const evalCtx = result.file.lines[pos.line].eval
-                if (evalCtx && evalCtx.state.sections && evalCtx.meta.section) {
-                    const section = evalCtx.state.sections[evalCtx.meta.section]
+                if (evalCtx && result.state.sections && evalCtx.meta.section) {
+                    const section = result.state.sections[evalCtx.meta.section]
                     if (section) {
-                        return new v.Hover(new DocString()
-                            .text().line(this.getDocComments(section.file, section.startLine))
+                        const analysis = await this.host.analyze(doc.uri.fsPath)
+                        const size = analysis && analysis.results ? analysis.results.sectionSizes.find(r => r.symbol.id === section.id && (r.display === 'all' || r.display === 'hover')) : undefined
+
+                        return new v.Hover(new DocString(this)
+                            .if(!!this.getDocComments(section.file, section.startLine).trim(), s => s.text().line(this.getDocComments(section.file, section.startLine)))
                             .code().keyword('SECTION').write(section.id).comma().region(section.region)
                             .if(section.fixedAddress !== undefined, s => s.hex(section.fixedAddress!).bracketed().append())
                             .if(section.bank !== undefined, s => s.comma().keyword('BANK').hex(section.bank!).bracketed().append())
                             .if(section.alignment !== undefined, s => s.comma().keyword('ALIGN').dec(section.alignment!).bracketed().append())
-                            .newline()
-                            .text().line('Section size:')
-                            .numberVariants(section.bytes.length)
+                            .if(!!size, s => s.newline().text().line('Section size:').numberVariants(size!.value))
                             .toMarkdown())
                     }
                 }
                 break
             }
             case TokenType.opcode: {
-                const evalCtx = result.file.lines[pos.line].eval
                 if (evalCtx && evalCtx.meta.op && evalCtx.meta.variant !== undefined) {
                     const op = OpRules[evalCtx.meta.op][evalCtx.meta.variant]
-                    return new v.Hover(new DocString()
+                    return new v.Hover(new DocString(this)
                         .code().opcode(evalCtx.meta.op).each(op.args, (s, p) => s.param(p), s => s.comma()).newline()
                         .text().line(op.desc)
                         .newline()
@@ -553,7 +597,7 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
             case TokenType.function: {
                 const func = token.value.toLowerCase()
                 const rule = FunctionRules[func]
-                return new v.Hover(new DocString()
+                return new v.Hover(new DocString(this)
                     .code().function(func).write(rule.params.map(p => `${p.name}: ${p.type}`).join(', ')).parenthesized().append().newline()
                     .newline()
                     .text().line(rule.desc)
@@ -562,12 +606,12 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                     .toMarkdown())
             }
             case TokenType.condition: {
-                return new v.Hover(new DocString()
+                return new v.Hover(new DocString(this)
                     .code().keyword('condition').parenthesized().conditionCode(token.value)
                     .toMarkdown())
             }
             case TokenType.register: {
-                return new v.Hover(new DocString()
+                return new v.Hover(new DocString(this)
                     .code().keyword('register').parenthesized().register(token.value)
                     .toMarkdown())
             }
@@ -608,7 +652,7 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                         range = '$FF80 - $FFFE'
                         break
                 }
-                return new v.Hover(new DocString()
+                return new v.Hover(new DocString(this)
                     .code().keyword('region').parenthesized().region(token.value).newline()
                     .line(range)
                     .text().line(desc)
@@ -622,7 +666,7 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         let paramIndex = 0
 
         let token: Token | null = null
-        while (!token || token.type !== TokenType.function) {
+        while ((!token || token.type !== TokenType.function) && pos.character > 0) {
             pos = pos.translate(0, -1)
             token = await this.getToken(doc, pos)
             if (token && token.type === TokenType.comma) {
@@ -632,8 +676,8 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         if (token && token.type === TokenType.function) {
             const func = token.value.toLowerCase()
             const rule = FunctionRules[func]
-            const label = new DocString().function(func).write(rule.params.map(p => `${p.name}: ${p.type}`).join(', ')).parenthesized().append().toString()
-            const docs = new DocString()
+            const label = new DocString(this).function(func).write(rule.params.map(p => `${p.name}: ${p.type}`).join(', ')).parenthesized().append().toString()
+            const docs = new DocString(this)
                 .text().line(rule.desc)
                 .newline()
                 .write('Returns:').write(rule.return.desc).newline()
@@ -650,36 +694,41 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideDefinition(doc: v.TextDocument, pos: v.Position, cancelToken: v.CancellationToken): Promise<v.Location | v.Location[] | v.LocationLink[] | null | undefined> {
-        const result = await this.compileDoc(doc)
-        const evalCtx = result.file.lines[pos.line].eval
-        if (!evalCtx) {
+        const result = await this.assembleDoc(doc)
+        if (!result) {
+            return null
+        }
+        const rootFile = await this.getFileContext(doc)
+        if (!rootFile) {
             return null
         }
         const token = await this.getToken(doc, pos)
         if (!token) {
             return null
         }
-        let symbol = this.getSymbol(token, result)
+        let symbol = this.getSymbol(token, result, rootFile)
         if (symbol) {
             return new v.Location(v.Uri.file(symbol.file), new v.Position(symbol.startLine, 0))
         }
-        symbol = this.getSymbol(token, result, true)
+        symbol = this.getSymbol(token, result, rootFile, true)
         if (!symbol) {
             return null
         }
         const results = await this.compileAllSourceFiles()
         for (const assembly of results) {
-            const uri = v.Uri.file(assembly.file.source.path)
-            if (uri === doc.uri) {
-                continue
-            }
-            for (const line of assembly.file.lines) {
-                if (line.lex && line.eval) {
-                    const tokens = line.lex.tokens.filter(t => t.type === TokenType.identifier)
-                    for (const t of tokens) {
-                        const sym = this.getSymbol(t, assembly)
-                        if (sym && sym.id === symbol.id) {
-                            return new v.Location(uri, new v.Position(t.line, t.col))
+            for (const file of assembly.files) {
+                const uri = v.Uri.file(file.source.path)
+                if (uri === doc.uri) {
+                    continue
+                }
+                for (const line of file.lines) {
+                    if (line.lex && line.eval) {
+                        const tokens = line.lex.tokens.filter(t => t.type === TokenType.identifier)
+                        for (const t of tokens) {
+                            const sym = this.getSymbol(t, assembly, file)
+                            if (sym && sym.id === symbol.id) {
+                                return new v.Location(uri, new v.Position(t.line, t.col))
+                            }
                         }
                     }
                 }
@@ -689,8 +738,15 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideReferences(doc: v.TextDocument, pos: v.Position, context: v.ReferenceContext, cancelToken: v.CancellationToken): Promise<v.Location[] | null | undefined> {
-        const result = await this.compileDoc(doc)
-        const evalCtx = result.file.lines[pos.line].eval
+        const result = await this.assembleDoc(doc)
+        if (!result) {
+            return null
+        }
+        const rootFile = await this.getFileContext(doc)
+        if (!rootFile) {
+            return null
+        }
+        const evalCtx = rootFile.lines[pos.line].eval
         if (!evalCtx) {
             return null
         }
@@ -698,24 +754,26 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         if (!token) {
             return null
         }
-        const symbol = this.getSymbol(token, result, true)
+        const symbol = this.getSymbol(token, result, rootFile, true)
         if (!symbol) {
             return null
         }
         const items: v.Location[] = []
         const results = await this.compileAllSourceFiles()
         for (const assembly of results) {
-            const uri = v.Uri.file(assembly.file.source.path)
-            for (const line of assembly.file.lines) {
-                if (line.lex && line.eval) {
-                    const tokens = line.lex.tokens.filter(t => t.type === TokenType.identifier)
-                    for (const t of tokens) {
-                        if (!context.includeDeclaration && t === token) {
-                            continue
-                        }
-                        const sym = this.getSymbol(t, assembly, true)
-                        if (sym && sym.id === symbol.id) {
-                            items.push(new v.Location(uri, new v.Position(t.line, t.col)))
+            for (const file of assembly.files) {
+                const uri = v.Uri.file(file.source.path)
+                for (const line of file.lines) {
+                    if (line.lex && line.eval) {
+                        const tokens = line.lex.tokens.filter(t => t.type === TokenType.identifier)
+                        for (const t of tokens) {
+                            if (!context.includeDeclaration && t === token) {
+                                continue
+                            }
+                            const sym = this.getSymbol(t, assembly, file, true)
+                            if (sym && sym.id === symbol.id) {
+                                items.push(new v.Location(uri, new v.Position(t.line, t.col)))
+                            }
                         }
                     }
                 }
@@ -725,8 +783,15 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideDocumentHighlights(doc: v.TextDocument, pos: v.Position, cancelToken: v.CancellationToken): Promise<v.DocumentHighlight[] | null | undefined> {
-        const result = await this.compileDoc(doc)
-        const evalCtx = result.file.lines[pos.line].eval
+        const result = await this.assembleDoc(doc)
+        if (!result) {
+            return null
+        }
+        const file = await this.getFileContext(doc)
+        if (!file) {
+            return null
+        }
+        const evalCtx = file.lines[pos.line].eval
         if (!evalCtx) {
             return null
         }
@@ -734,14 +799,14 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         if (!token) {
             return null
         }
-        const symbol = this.getSymbol(token, result)
+        const symbol = this.getSymbol(token, result, file)
         const items: v.DocumentHighlight[] = []
-        for (const line of result.file.lines) {
+        for (const line of file.lines) {
             if (line.lex && line.eval) {
                 if (symbol) {
                     const tokens = line.lex.tokens.filter(t => t.type === TokenType.identifier)
                     for (const t of tokens) {
-                        const sym = this.getSymbol(t, result)
+                        const sym = this.getSymbol(t, result, file)
                         if (sym && sym.id === symbol.id) {
                             items.push(new v.DocumentHighlight(new v.Range(t.line, t.col, t.line, t.col + t.value.length)))
                         }
@@ -760,34 +825,37 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideDocumentSymbols(doc: v.TextDocument, cancelToken: v.CancellationToken): Promise<v.SymbolInformation[] | v.DocumentSymbol[] | null | undefined> {
-        const result = await this.compileDoc(doc)
-        const evalCtx = result.file.lines[0].eval
-        if (!evalCtx) {
+        const result = await this.assembleDoc(doc)
+        if (!result) {
+            return null
+        }
+        const file = await this.getFileContext(doc)
+        if (!file) {
             return null
         }
         const items: v.DocumentSymbol[] = []
-        if (evalCtx.state.sections) {
-            for (const sectionId of Object.keys(evalCtx.state.sections)) {
-                const section = evalCtx.state.sections[sectionId]
+        if (result.state.sections) {
+            for (const sectionId of Object.keys(result.state.sections)) {
+                const section = result.state.sections[sectionId]
                 if (section.file !== doc.uri.fsPath) {
                     continue
                 }
-                const sectionSymbol = new v.DocumentSymbol(sectionId, 'section', v.SymbolKind.Namespace, new v.Range(section.startLine, 0, section.endLine, result.file.lines[section.endLine].source.text.length), new v.Range(section.startLine, 0, section.startLine, result.file.lines[section.startLine].source.text.length))
-                if (evalCtx.state.labels) {
+                const sectionSymbol = new v.DocumentSymbol(sectionId, 'section', v.SymbolKind.Namespace, new v.Range(section.startLine, 0, section.endLine, file.lines[section.endLine].source.text.length), new v.Range(section.startLine, 0, section.startLine, file.lines[section.startLine].source.text.length))
+                if (result.state.labels) {
                     sectionSymbol.children = []
-                    for (const labelId of Object.keys(evalCtx.state.labels)) {
-                        const label = evalCtx.state.labels[labelId]
+                    for (const labelId of Object.keys(result.state.labels)) {
+                        const label = result.state.labels[labelId]
                         if (label.id.includes('.') || label.section !== sectionId || label.file !== doc.uri.fsPath) {
                             continue
                         }
-                        const labelSymbol = new v.DocumentSymbol(labelId, 'global label', v.SymbolKind.Variable, new v.Range(label.startLine, 0, label.endLine, result.file.lines[label.endLine].source.text.length), new v.Range(label.startLine, 0, label.endLine, result.file.lines[label.endLine].source.text.length))
+                        const labelSymbol = new v.DocumentSymbol(labelId, 'global label', v.SymbolKind.Variable, new v.Range(label.startLine, 0, label.endLine, file.lines[label.endLine].source.text.length), new v.Range(label.startLine, 0, label.endLine, file.lines[label.endLine].source.text.length))
                         labelSymbol.children = []
-                        for (const subLabelId of Object.keys(evalCtx.state.labels)) {
-                            const subLabel = evalCtx.state.labels[subLabelId]
+                        for (const subLabelId of Object.keys(result.state.labels)) {
+                            const subLabel = result.state.labels[subLabelId]
                             if (!subLabel.id.startsWith(`${labelId}.`) || subLabel.section !== sectionId || subLabel.file !== doc.uri.fsPath) {
                                 continue
                             }
-                            const subLabelSymbol = new v.DocumentSymbol(subLabelId.substr(subLabelId.indexOf('.')), 'local label', v.SymbolKind.Variable, new v.Range(subLabel.startLine, 0, subLabel.endLine, result.file.lines[subLabel.endLine].source.text.length), new v.Range(subLabel.startLine, 0, subLabel.endLine, result.file.lines[subLabel.endLine].source.text.length))
+                            const subLabelSymbol = new v.DocumentSymbol(subLabelId.substr(subLabelId.indexOf('.')), 'local label', v.SymbolKind.Variable, new v.Range(subLabel.startLine, 0, subLabel.endLine, file.lines[subLabel.endLine].source.text.length), new v.Range(subLabel.startLine, 0, subLabel.endLine, file.lines[subLabel.endLine].source.text.length))
                             labelSymbol.children.push(subLabelSymbol)
                         }
                         sectionSymbol.children.push(labelSymbol)
@@ -796,40 +864,40 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                 items.push(sectionSymbol)
             }
         }
-        if (evalCtx.state.numberEquates) {
-            for (const id of Object.keys(evalCtx.state.numberEquates)) {
-                const equ = evalCtx.state.numberEquates[id]
+        if (result.state.numberEquates) {
+            for (const id of Object.keys(result.state.numberEquates)) {
+                const equ = result.state.numberEquates[id]
                 if (equ.file !== doc.uri.fsPath) {
                     continue
                 }
-                items.push(new v.DocumentSymbol(id, 'equ', v.SymbolKind.Constant, new v.Range(equ.startLine, 0, equ.endLine, result.file.lines[equ.endLine].source.text.length), new v.Range(equ.startLine, 0, equ.startLine, result.file.lines[equ.startLine].source.text.length)))
+                items.push(new v.DocumentSymbol(id, 'equ', v.SymbolKind.Constant, new v.Range(equ.startLine, 0, equ.endLine, file.lines[equ.endLine].source.text.length), new v.Range(equ.startLine, 0, equ.startLine, file.lines[equ.startLine].source.text.length)))
             }
         }
-        if (evalCtx.state.stringEquates) {
-            for (const id of Object.keys(evalCtx.state.stringEquates)) {
-                const equs = evalCtx.state.stringEquates[id]
+        if (result.state.stringEquates) {
+            for (const id of Object.keys(result.state.stringEquates)) {
+                const equs = result.state.stringEquates[id]
                 if (equs.file !== doc.uri.fsPath) {
                     continue
                 }
-                items.push(new v.DocumentSymbol(id, 'equs', v.SymbolKind.Constant, new v.Range(equs.startLine, 0, equs.endLine, result.file.lines[equs.endLine].source.text.length), new v.Range(equs.startLine, 0, equs.startLine, result.file.lines[equs.startLine].source.text.length)))
+                items.push(new v.DocumentSymbol(id, 'equs', v.SymbolKind.Constant, new v.Range(equs.startLine, 0, equs.endLine, file.lines[equs.endLine].source.text.length), new v.Range(equs.startLine, 0, equs.startLine, file.lines[equs.startLine].source.text.length)))
             }
         }
-        if (evalCtx.state.sets) {
-            for (const id of Object.keys(evalCtx.state.sets)) {
-                const set = evalCtx.state.sets[id]
+        if (result.state.sets) {
+            for (const id of Object.keys(result.state.sets)) {
+                const set = result.state.sets[id]
                 if (set.file !== doc.uri.fsPath) {
                     continue
                 }
-                items.push(new v.DocumentSymbol(id, 'set', v.SymbolKind.Variable, new v.Range(set.startLine, 0, set.endLine, result.file.lines[set.endLine].source.text.length), new v.Range(set.startLine, 0, set.startLine, result.file.lines[set.startLine].source.text.length)))
+                items.push(new v.DocumentSymbol(id, 'set', v.SymbolKind.Variable, new v.Range(set.startLine, 0, set.endLine, file.lines[set.endLine].source.text.length), new v.Range(set.startLine, 0, set.startLine, file.lines[set.startLine].source.text.length)))
             }
         }
-        if (evalCtx.state.macros) {
-            for (const id of Object.keys(evalCtx.state.macros)) {
-                const macro = evalCtx.state.macros[id]
+        if (result.state.macros) {
+            for (const id of Object.keys(result.state.macros)) {
+                const macro = result.state.macros[id]
                 if (macro.file !== doc.uri.fsPath) {
                     continue
                 }
-                items.push(new v.DocumentSymbol(id, 'macro', v.SymbolKind.Function, new v.Range(macro.startLine, 0, macro.endLine, result.file.lines[macro.endLine].source.text.length), new v.Range(macro.startLine, 0, macro.startLine, result.file.lines[macro.startLine].source.text.length)))
+                items.push(new v.DocumentSymbol(id, 'macro', v.SymbolKind.Function, new v.Range(macro.startLine, 0, macro.endLine, file.lines[macro.endLine].source.text.length), new v.Range(macro.startLine, 0, macro.startLine, file.lines[macro.startLine].source.text.length)))
             }
         }
         return items
@@ -840,63 +908,61 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         const items: v.SymbolInformation[] = []
         const results = await this.compileAllSourceFiles()
         for (const result of results) {
-            const uri = v.Uri.file(result.file.source.path)
-            const evalCtx = result.file.lines[0].eval
-            if (!evalCtx) {
-                continue
-            }
-            if (evalCtx.state.sections) {
-                for (const id of Object.keys(evalCtx.state.sections)) {
-                    const section = evalCtx.state.sections[id]
-                    if (!regex.test(id) || section.file !== uri.fsPath) {
-                        continue
+            for (const file of result.files) {
+                const uri = v.Uri.file(file.source.path)
+                if (result.state.sections) {
+                    for (const id of Object.keys(result.state.sections)) {
+                        const section = result.state.sections[id]
+                        if (!regex.test(id) || section.file !== uri.fsPath) {
+                            continue
+                        }
+                        items.push(new v.SymbolInformation(id, v.SymbolKind.Namespace, '', new v.Location(uri, new v.Range(section.startLine, 0, section.endLine, file.lines[section.endLine].source.text.length))))
                     }
-                    items.push(new v.SymbolInformation(id, v.SymbolKind.Namespace, '', new v.Location(uri, new v.Range(section.startLine, 0, section.endLine, result.file.lines[section.endLine].source.text.length))))
                 }
-            }
-            if (evalCtx.state.labels) {
-                for (const id of Object.keys(evalCtx.state.labels)) {
-                    const label = evalCtx.state.labels[id]
-                    if (!regex.test(id) || label.file !== uri.fsPath) {
-                        continue
+                if (result.state.labels) {
+                    for (const id of Object.keys(result.state.labels)) {
+                        const label = result.state.labels[id]
+                        if (!regex.test(id) || label.file !== uri.fsPath) {
+                            continue
+                        }
+                        items.push(new v.SymbolInformation(id, v.SymbolKind.Variable, '', new v.Location(uri, new v.Range(label.startLine, 0, label.endLine, file.lines[label.endLine].source.text.length))))
                     }
-                    items.push(new v.SymbolInformation(id, v.SymbolKind.Variable, '', new v.Location(uri, new v.Range(label.startLine, 0, label.endLine, result.file.lines[label.endLine].source.text.length))))
                 }
-            }
-            if (evalCtx.state.numberEquates) {
-                for (const id of Object.keys(evalCtx.state.numberEquates)) {
-                    const equ = evalCtx.state.numberEquates[id]
-                    if (!regex.test(id) || equ.file !== uri.fsPath) {
-                        continue
+                if (result.state.numberEquates) {
+                    for (const id of Object.keys(result.state.numberEquates)) {
+                        const equ = result.state.numberEquates[id]
+                        if (!regex.test(id) || equ.file !== uri.fsPath) {
+                            continue
+                        }
+                        items.push(new v.SymbolInformation(id, v.SymbolKind.Constant, '', new v.Location(uri, new v.Range(equ.startLine, 0, equ.endLine, file.lines[equ.endLine].source.text.length))))
                     }
-                    items.push(new v.SymbolInformation(id, v.SymbolKind.Constant, '', new v.Location(uri, new v.Range(equ.startLine, 0, equ.endLine, result.file.lines[equ.endLine].source.text.length))))
                 }
-            }
-            if (evalCtx.state.stringEquates) {
-                for (const id of Object.keys(evalCtx.state.stringEquates)) {
-                    const equs = evalCtx.state.stringEquates[id]
-                    if (!regex.test(id) || equs.file !== uri.fsPath) {
-                        continue
+                if (result.state.stringEquates) {
+                    for (const id of Object.keys(result.state.stringEquates)) {
+                        const equs = result.state.stringEquates[id]
+                        if (!regex.test(id) || equs.file !== uri.fsPath) {
+                            continue
+                        }
+                        items.push(new v.SymbolInformation(id, v.SymbolKind.Constant, '', new v.Location(uri, new v.Range(equs.startLine, 0, equs.endLine, file.lines[equs.endLine].source.text.length))))
                     }
-                    items.push(new v.SymbolInformation(id, v.SymbolKind.Constant, '', new v.Location(uri, new v.Range(equs.startLine, 0, equs.endLine, result.file.lines[equs.endLine].source.text.length))))
                 }
-            }
-            if (evalCtx.state.sets) {
-                for (const id of Object.keys(evalCtx.state.sets)) {
-                    const set = evalCtx.state.sets[id]
-                    if (!regex.test(id) || set.file !== uri.fsPath) {
-                        continue
+                if (result.state.sets) {
+                    for (const id of Object.keys(result.state.sets)) {
+                        const set = result.state.sets[id]
+                        if (!regex.test(id) || set.file !== uri.fsPath) {
+                            continue
+                        }
+                        items.push(new v.SymbolInformation(id, v.SymbolKind.Variable, '', new v.Location(uri, new v.Range(set.startLine, 0, set.endLine, file.lines[set.endLine].source.text.length))))
                     }
-                    items.push(new v.SymbolInformation(id, v.SymbolKind.Variable, '', new v.Location(uri, new v.Range(set.startLine, 0, set.endLine, result.file.lines[set.endLine].source.text.length))))
                 }
-            }
-            if (evalCtx.state.macros) {
-                for (const id of Object.keys(evalCtx.state.macros)) {
-                    const macro = evalCtx.state.macros[id]
-                    if (!regex.test(id) || macro.file !== uri.fsPath) {
-                        continue
+                if (result.state.macros) {
+                    for (const id of Object.keys(result.state.macros)) {
+                        const macro = result.state.macros[id]
+                        if (!regex.test(id) || macro.file !== uri.fsPath) {
+                            continue
+                        }
+                        items.push(new v.SymbolInformation(id, v.SymbolKind.Function, '', new v.Location(uri, new v.Range(macro.startLine, 0, macro.endLine, file.lines[macro.endLine].source.text.length))))
                     }
-                    items.push(new v.SymbolInformation(id, v.SymbolKind.Function, '', new v.Location(uri, new v.Range(macro.startLine, 0, macro.endLine, result.file.lines[macro.endLine].source.text.length))))
                 }
             }
         }
@@ -908,79 +974,86 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideCodeLenses(doc: v.TextDocument, cancelToken: v.CancellationToken): Promise<v.CodeLens[] | null | undefined> {
-        const result = await this.compileDoc(doc)
-        const evalCtx = result.file.lines[0].eval
-        if (!evalCtx) {
+        if (!getSetting('hgbasm.analysisCodeLensEnabled')) {
             return null
         }
-        const sectionSizes = getSetting('hgbasm.analysis.sectionSizes')
-        const globalLabelSizes = getSetting('hgbasm.analysis.globalLabelSizes')
-        const localLabelSizes = getSetting('hgbasm.analysis.localLabelSizes')
-        const globalLabelOffsets = getSetting('hgbasm.analysis.globalLabelOffsets')
-        const localLabelOffsets = getSetting('hgbasm.analysis.localLabelOffsets')
-
         const items: v.CodeLens[] = []
-        if (evalCtx.state.sections && (sectionSizes === 'codelens' || sectionSizes === 'all')) {
-            for (const id of Object.keys(evalCtx.state.sections)) {
-                const section = evalCtx.state.sections[id]
-                if (section.file !== doc.uri.fsPath) {
-                    continue
-                }
-                const range = new v.Range(section.startLine, 0, section.endLine, result.file.lines[section.endLine].source.text.length)
-                items.push(new v.CodeLens(range, { title: new DocString().write('Size in bytes:').hex(section.bytes.length).dec(section.bytes.length).parenthesized().toString(), command: '' }))
-            }
+        const file = await this.getFileContext(doc)
+        if (!file) {
+            return null
         }
-        if (evalCtx.state.labels) {
-            for (const id of Object.keys(evalCtx.state.labels)) {
-                const label = evalCtx.state.labels[id]
-                if (label.file !== doc.uri.fsPath) {
-                    continue
-                }
-                const range = new v.Range(label.startLine, 0, label.endLine, result.file.lines[label.endLine].source.text.length)
-
-                const local = id.includes('.')
-                const showLabelSize = (local && (localLabelSizes === 'codelens' || localLabelSizes === 'all')) || (!local && (globalLabelSizes === 'codelens' || globalLabelSizes === 'all'))
-                const showLabelOffset = (local && (localLabelOffsets === 'codelens' || localLabelOffsets === 'all')) || (!local && (globalLabelOffsets === 'codelens' || globalLabelOffsets === 'all'))
-
-                if (showLabelSize) {
-                    items.push(new v.CodeLens(range, { title: new DocString().write('Size in bytes:').hex(label.byteSize).dec(label.byteSize).parenthesized().toString(), command: '' }))
-                }
-                if (showLabelOffset) {
-                    items.push(new v.CodeLens(range, { title: new DocString().write('Offset in section:').hex(label.byteOffset).dec(label.byteOffset).parenthesized().toString(), command: '' }))
-                }
-            }
+        const analysis = await this.host.analyze(doc.uri.fsPath)
+        if (!analysis || !analysis.results) {
+            return null
         }
+
+        for (const item of analysis.results.sectionSizes.filter(r => r.symbol.file === doc.uri.fsPath && (r.display === 'all' || r.display === 'codelens'))) {
+            items.push(new v.CodeLens(this.getSymbolRange(item.symbol, file), {
+                title: new DocString(this)
+                    .write('Size in bytes:')
+                    .hex(item.value)
+                    .dec(item.value).parenthesized()
+                    .toString(),
+                command: ''
+            }))
+        }
+
+        for (const item of analysis.results.labelOffsets.filter(r => r.symbol.file === doc.uri.fsPath && (r.display === 'all' || r.display === 'codelens'))) {
+            items.push(new v.CodeLens(this.getSymbolRange(item.symbol, file), {
+                title: new DocString(this)
+                    .write('Offset in section:')
+                    .hex(item.value)
+                    .dec(item.value).parenthesized()
+                    .toString(),
+                command: ''
+            }))
+        }
+
+        for (const item of analysis.results.labelSizes.filter(r => r.symbol.file === doc.uri.fsPath && (r.display === 'all' || r.display === 'codelens'))) {
+            items.push(new v.CodeLens(this.getSymbolRange(item.symbol, file), {
+                title: new DocString(this)
+                    .write('Size in bytes:')
+                    .hex(item.value)
+                    .dec(item.value).parenthesized()
+                    .toString(),
+                command: ''
+            }))
+        }
+
         return items
     }
 
     public async provideFoldingRanges(doc: v.TextDocument, context: v.FoldingContext, cancelToken: v.CancellationToken): Promise<v.FoldingRange[] | null | undefined> {
-        const result = await this.compileDoc(doc)
-        const evalCtx = result.file.lines[0].eval
-        if (!evalCtx) {
+        const result = await this.assembleDoc(doc)
+        if (!result) {
+            return null
+        }
+        const file = await this.getFileContext(doc)
+        if (!file) {
             return null
         }
         const items: v.FoldingRange[] = []
-        if (evalCtx.state.sections) {
-            for (const id of Object.keys(evalCtx.state.sections)) {
-                const section = evalCtx.state.sections[id]
+        if (result.state.sections) {
+            for (const id of Object.keys(result.state.sections)) {
+                const section = result.state.sections[id]
                 if (section.file !== doc.uri.fsPath) {
                     continue
                 }
                 let endLine = section.endLine
-                while (!result.file.lines[endLine].source.text.trim() || result.file.lines[endLine].source.text.startsWith(';')) {
+                while (!file.lines[endLine].source.text.trim() || file.lines[endLine].source.text.startsWith(';')) {
                     endLine--
                 }
                 items.push(new v.FoldingRange(section.startLine, endLine, v.FoldingRangeKind.Region))
             }
         }
-        if (evalCtx.state.labels) {
-            for (const id of Object.keys(evalCtx.state.labels)) {
-                const label = evalCtx.state.labels[id]
+        if (result.state.labels) {
+            for (const id of Object.keys(result.state.labels)) {
+                const label = result.state.labels[id]
                 if (label.file !== doc.uri.fsPath) {
                     continue
                 }
                 let endLine = label.endLine
-                while (!result.file.lines[endLine].source.text.trim() || result.file.lines[endLine].source.text.trim().startsWith(';')) {
+                while (!file.lines[endLine].source.text.trim() || file.lines[endLine].source.text.trim().startsWith(';')) {
                     endLine--
                 }
                 items.push(new v.FoldingRange(label.startLine, endLine, v.FoldingRangeKind.Region))
@@ -1002,33 +1075,24 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideDocumentRangeFormattingEdits(doc: v.TextDocument, range: v.Range, options: v.FormattingOptions, cancelToken: v.CancellationToken): Promise<v.TextEdit[] | null | undefined> {
-        if (getSetting('hgbasm.formatting.enabled')) {
-            const items: v.TextEdit[] = []
-            const opts: IFormatterOptions = {
-                useSpaces: options.insertSpaces,
-                tabSize: options.tabSize,
-                conditionCodeCase: getSetting('hgbasm.formatting.conditionCodes'),
-                functionCase: getSetting('hgbasm.formatting.functions'),
-                hexLetterCase: getSetting('hgbasm.formatting.hexLetters'),
-                keywordCase: getSetting('hgbasm.formatting.keywords'),
-                opcodeCase: getSetting('hgbasm.formatting.opcodes'),
-                pseudoOpCase: getSetting('hgbasm.formatting.pseudoOps'),
-                regionCase: getSetting('hgbasm.formatting.regions'),
-                registerCase: getSetting('hgbasm.formatting.registers')
-            }
-            const result = await this.host.format(doc.uri.fsPath, range.start.line, range.end.line, opts)
-            for (const d of result.deltas) {
-                if (d.remove && d.add) {
-                    items.push(v.TextEdit.replace(new v.Range(d.line, d.column, d.line, d.column + d.remove), d.add))
-                } else if (d.remove) {
-                    items.push(v.TextEdit.delete(new v.Range(d.line, d.column, d.line, d.column + d.remove)))
-                } else if (d.add) {
-                    items.push(v.TextEdit.insert(new v.Position(d.line, d.column), d.add))
-                }
-            }
-            return items
+        if (!getSetting('hgbasm.formattingEnabled')) {
+            return null
         }
-        return null
+        const items: v.TextEdit[] = []
+        const result = await this.host.format(doc.uri.fsPath, range.start.line, range.end.line, options)
+        if (!result) {
+            return null
+        }
+        for (const d of result.deltas) {
+            if (d.remove && d.add) {
+                items.push(v.TextEdit.replace(new v.Range(d.line, d.column, d.line, d.column + d.remove), d.add))
+            } else if (d.remove) {
+                items.push(v.TextEdit.delete(new v.Range(d.line, d.column, d.line, d.column + d.remove)))
+            } else if (d.add) {
+                items.push(v.TextEdit.insert(new v.Position(d.line, d.column), d.add))
+            }
+        }
+        return items
     }
 
     public provideOnTypeFormattingEdits(doc: v.TextDocument, pos: v.Position, ch: string, options: v.FormattingOptions, cancelToken: v.CancellationToken): v.ProviderResult<v.TextEdit[]> {
@@ -1036,16 +1100,23 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
     }
 
     public async provideRenameEdits(doc: v.TextDocument, pos: v.Position, newName: string, cancelToken: v.CancellationToken): Promise<v.WorkspaceEdit | null | undefined> {
-        const result = await this.compileDoc(doc)
+        const result = await this.assembleDoc(doc)
+        if (!result) {
+            return null
+        }
         const token = await this.getToken(doc, pos)
         if (!token) {
             return null
         }
-        const evalCtx = result.file.lines[token.line].eval
+        const rootFile = await this.getFileContext(doc)
+        if (!rootFile) {
+            return null
+        }
+        const evalCtx = rootFile.lines[token.line].eval
         if (!evalCtx) {
             return null
         }
-        const symbol = await this.getSymbol(token, result, true)
+        const symbol = await this.getSymbol(token, result, rootFile, true)
         if (!symbol) {
             return null
         }
@@ -1058,38 +1129,40 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
         const edit = new v.WorkspaceEdit()
         const results = await this.compileAllSourceFiles()
         for (const assembly of results) {
-            const uri = v.Uri.file(assembly.file.source.path)
-            for (const line of assembly.file.lines) {
-                if (line.lex && line.eval) {
-                    const tokens = line.lex.tokens.filter(t => t.type === TokenType.identifier)
-                    for (const t of tokens) {
-                        const sym = this.getSymbol(t, assembly, true)
-                        if (!sym) {
-                            continue
-                        }
-                        const suffixes = t.value.includes(':') ? t.value.substr(t.value.indexOf(':')) : ''
-                        const hasGlobal = !t.value.includes('.') || t.value.indexOf('.') > 0
-                        const hasLocal = t.value.includes('.')
-                        const symGlobal = sym.id.includes('.') ? sym.id.substr(0, sym.id.indexOf('.')) : sym.id
-                        const symLocal = sym.id.includes('.') ? sym.id.substr(sym.id.indexOf('.')) : ''
-
-                        let newGlobal = symGlobal
-                        let newLocal = symLocal
-
-                        if (hasGlobal && isGlobal && symGlobal === oldGlobal) {
-                            newGlobal = newName.includes('.') ? newName.substr(0, newName.indexOf('.')) : newName
-                        }
-
-                        if (hasLocal && isLocal && symGlobal === oldGlobal && symLocal === oldLocal) {
-                            newLocal = newName.includes('.') ? newName.substr(newName.indexOf('.')) : newName
-                            if (!newLocal.startsWith('.')) {
-                                newLocal = `.${newLocal}`
+            for (const file of assembly.files) {
+                const uri = v.Uri.file(file.source.path)
+                for (const line of file.lines) {
+                    if (line.lex && line.eval) {
+                        const tokens = line.lex.tokens.filter(t => t.type === TokenType.identifier)
+                        for (const t of tokens) {
+                            const sym = this.getSymbol(t, assembly, file, true)
+                            if (!sym) {
+                                continue
                             }
-                        }
+                            const suffixes = t.value.includes(':') ? t.value.substr(t.value.indexOf(':')) : ''
+                            const hasGlobal = !t.value.includes('.') || t.value.indexOf('.') > 0
+                            const hasLocal = t.value.includes('.')
+                            const symGlobal = sym.id.includes('.') ? sym.id.substr(0, sym.id.indexOf('.')) : sym.id
+                            const symLocal = sym.id.includes('.') ? sym.id.substr(sym.id.indexOf('.')) : ''
 
-                        if (newGlobal !== symGlobal || newLocal !== symLocal) {
-                            const replacement = `${hasGlobal ? newGlobal : ''}${hasLocal ? newLocal : ''}${suffixes}`
-                            edit.replace(uri, new v.Range(t.line, t.col, t.line, t.col + t.value.length), replacement)
+                            let newGlobal = symGlobal
+                            let newLocal = symLocal
+
+                            if (hasGlobal && isGlobal && symGlobal === oldGlobal) {
+                                newGlobal = newName.includes('.') ? newName.substr(0, newName.indexOf('.')) : newName
+                            }
+
+                            if (hasLocal && isLocal && symGlobal === oldGlobal && symLocal === oldLocal) {
+                                newLocal = newName.includes('.') ? newName.substr(newName.indexOf('.')) : newName
+                                if (!newLocal.startsWith('.')) {
+                                    newLocal = `.${newLocal}`
+                                }
+                            }
+
+                            if (newGlobal !== symGlobal || newLocal !== symLocal) {
+                                const replacement = `${hasGlobal ? newGlobal : ''}${hasLocal ? newLocal : ''}${suffixes}`
+                                edit.replace(uri, new v.Range(t.line, t.col, t.line, t.col + t.value.length), replacement)
+                            }
                         }
                     }
                 }

@@ -11,25 +11,25 @@
             "additionalProperties": false,
             "properties": {
                 "sourcePaths": {
-                    "description": "An array of paths or glob patterns specifying the source files to assemble. If omitted, defaults to [ './src/**/*.{asm,s,z80,gbz80,sm83,hgb}' ].",
+                    "description": "An array of paths or glob patterns specifying the source files to assemble. If omitted, defaults to [ 'src/*.{asm,s,z80,gbz80,sm83,hgb}' ].",
                     "type": "array",
                     "uniqueItems": true,
                     "items": {
                         "type": "string"
                     },
                     "default": [
-                        "./src/**/*.{asm,s,z80,gbz80,sm83,hgb}"
+                        "src/**/*.{asm,s,z80,gbz80,sm83,hgb}"
                     ]
                 },
                 "includePaths": {
-                    "description": "An array of paths or glob patterns specifying the folders to search in when including other files from source files. If omitted, defaults to [ './inc/**/' ].",
+                    "description": "An array of paths or glob patterns specifying the folders to search in when including other files from source files. If omitted, defaults to [ 'inc/**/' ].",
                     "type": "array",
                     "uniqueItems": true,
                     "items": {
                         "type": "string"
                     },
                     "default": [
-                        "./inc/**/"
+                        "inc/**/"
                     ]
                 },
                 "outputDependFiles": {
@@ -38,7 +38,7 @@
                     "default": false
                 },
                 "dependPath": {
-                    "description": "A path to the directory where depend files will be written if `outputDependFiles` is true or omitted. If omitted, defaults to './deps/'.",
+                    "description": "A path to the directory where depend files will be written if `outputDependFiles` is true or omitted. If omitted, defaults to 'deps/'.",
                     "type": "string"
                 },
                 "outputObjectFiles": {
@@ -47,7 +47,7 @@
                     "default": true
                 },
                 "objectPath": {
-                    "description": "A path to the directory where object files will be written if `outputObjectFiles` is true or omitted. If omitted, defaults to './obj/'.",
+                    "description": "A path to the directory where object files will be written if `outputObjectFiles` is true or omitted. If omitted, defaults to 'obj/'.",
                     "type": "string"
                 },
                 "logLevel": {
@@ -111,7 +111,7 @@
             "additionalProperties": false,
             "properties": {
                 "objectPaths": {
-                    "description": "An array of paths or glob patterns specifying the object files to link. If omitted, defaults to [ './obj/**/*.o' ].",
+                    "description": "An array of paths or glob patterns specifying the object files to link. If omitted, defaults to [ 'obj/**/*.o' ].",
                     "type": "array",
                     "uniqueItems": true,
                     "items": {
@@ -221,7 +221,8 @@
                 },
                 "romPath": {
                     "description": "The path to the ROM file to fix. If omitted, defaults to 'bin/rom.gb'.",
-                    "type": "string"
+                    "type": "string",
+                    "default": "bin/rom.gb"
                 },
                 "outputPath": {
                     "description": "The path where the resulting ROM file will be written. If omitted, defaults to `romPath`.",
@@ -248,10 +249,11 @@
                     "additionalProperties": false,
                     "properties": {
                         "padding": {
-                            "description": "The value used to fill empty spaces at the end of the ROM. If omitted, defaults to 0.",
+                            "description": "The value used to fill empty spaces at the end of the ROM. If omitted, no padding is done.",
                             "type": "integer",
                             "minimum": 0,
-                            "maximum": 255
+                            "maximum": 255,
+                            "default": 0
                         },
                         "cgbCompatibility": {
                             "description": "The header value to write for CGB compatibility. If omitted the ROM is left unchanged.",
@@ -295,7 +297,7 @@
                             "type": "boolean"
                         },
                         "licensee": {
-                            "description": "A two-character string designating the publishere. If omitted the ROM is left unchanged.",
+                            "description": "A two-character string designating the publisher. If omitted the ROM is left unchanged.",
                             "type": "string",
                             "maxLength": 2
                         },
@@ -429,7 +431,7 @@
             }
         },
         "formatter": {
-            "description": "Settings for the formatting tool",
+            "description": "Settings for code formatting",
             "type": "object",
             "additionalProperties": false,
             "properties": {
@@ -522,8 +524,141 @@
                 }
             }
         },
+        "analyzer": {
+            "description": "Settings for code analysis",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "settings": {
+                    "description": "Settings for the code analyzer",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "sectionSizes": {
+                            "description": "Where the sizes of sections should be displayed.",
+                            "type": "string",
+                            "enum": [
+                                "codelens",
+                                "hover",
+                                "all",
+                                "none"
+                            ],
+                            "default": "all"
+                        },
+                        "globalLabelOffsets": {
+                            "description": "Where the offsets of global labels (relative to their section) should be displayed.",
+                            "type": "string",
+                            "enum": [
+                                "codelens",
+                                "hover",
+                                "all",
+                                "none"
+                            ],
+                            "default": "hover"
+                        },
+                        "globalLabelSizes": {
+                            "description": "Where the sizes of global labels (from definition until the next global label or end of section) should be displayed.",
+                            "type": "string",
+                            "enum": [
+                                "codelens",
+                                "hover",
+                                "all",
+                                "none"
+                            ],
+                            "default": "hover"
+                        },
+                        "localLabelOffsets": {
+                            "description": "Where the offsets of local labels (relative to their section) should be displayed.",
+                            "type": "string",
+                            "enum": [
+                                "codelens",
+                                "hover",
+                                "all",
+                                "none"
+                            ],
+                            "default": "hover"
+                        },
+                        "localLabelSizes": {
+                            "description": "Where the sizes of local labels (from definition until the next global label, local label, or end of section) should be displayed.",
+                            "type": "string",
+                            "enum": [
+                                "codelens",
+                                "hover",
+                                "all",
+                                "none"
+                            ],
+                            "default": "hover"
+                        }
+                    }
+                }
+            }
+        },
+        "autoCompleter": {
+            "description": "Settings for auto-completion",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "settings": {
+                    "description": "Settings for the auto-completer",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "keywords": {
+                            "description": "Whether to include keywords in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "instructions": {
+                            "description": "Whether to include instruction snippets in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "functions": {
+                            "description": "Whether to include functions in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "regions": {
+                            "description": "Whether to include memory regions in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "predefines": {
+                            "description": "Whether to include predefined equates in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "numberEquates": {
+                            "description": "Whether to include defined number equates in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "stringEquates": {
+                            "description": "Whether to include defined string equates in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "sets": {
+                            "description": "Whether to include defined sets in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "labels": {
+                            "description": "Whether to include defined labels in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "macros": {
+                            "description": "Whether to include defined macros in the auto-completion list. If omitted, defaults to true.",
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                }
+            }
+        },
         "emulator": {
-            "description": "Settings for the testing emulator",
+            "description": "Settings for emulation",
             "type": "object",
             "additionalProperties": false,
             "properties": {

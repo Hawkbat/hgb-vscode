@@ -48,6 +48,9 @@
 		},
 		"no-submodule-imports": {
 			"severity": "off"
+		},
+		"no-console": {
+			"severity": "off"
 		}
 	}
 }

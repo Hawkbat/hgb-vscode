@@ -13,6 +13,8 @@
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
         "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "esModuleInterop": true,
         "plugins": [
             {
                 "name": "typescript-tslint-plugin",

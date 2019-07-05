@@ -40,7 +40,7 @@
         },
         {
             "name": "string.regexp",
-            "match": "\\{.*\\}"
+            "match": "\\{.*?\\}"
         },
         {
             "name": "constant.character.escape",

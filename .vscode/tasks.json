@@ -11,10 +11,18 @@
             "presentation": {
                 "reveal": "never"
             },
+            "dependsOn": [
+                "Generate interface for gbconfig.json"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "type": "shell",
+            "label": "Generate interface for gbconfig.json",
+            "command": "npx json2ts -i gbconfig.schema.json -o src/GameBoyProject.d.ts"
         }
     ]
 }
