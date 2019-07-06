@@ -23,23 +23,19 @@ To enable the use of hgbasm-specific features, add this line at the top of the f
 #mode hgbasm
 ```
 
-Also, for full control over the compiler settings used when editing your project, create a file called `gbconfig.json` in the root of your project and configure the settings within as appropriate.
-
 ## Extension Settings
 
 Key settings:
 
-* `hgbasm.project.configPath`: a path to a gbconfig.json file with compiler settings; defaults to './gbconfig.json'
-* `hgbasm.project.includePath`: a path or glob pattern for the folders to search for includes; defaults to './**/'
-* `hgbasm.project.sourcePath`: a path or glob pattern for the source files to assemble; defaults to './**/*.{asm,s,z80,gbz80,sm83,hgb}'
-* `hgbasm.autoComplete.*`: include or exclude types of item from the auto-completion list
-* `hgbasm.analysis.*`: controls where analysis information such as section sizes or label offsets should be displayed
-* `hgbasm.formatting.enabled`: enable/disable automatic formatting
-* `hgbasm.formatting.*`: determines how the formatter affects each type of symbol
+* `hgbasm.analysisHoverEnabled`: Enable/disable analysis information on hover. Defaults to enabled.
+* `hgbasm.analysisCodeLensEnabled`: Enable/disable analysis information codelens. Defaults to enabled.
+* `hgbasm.formattingEnabled`: Enable/disable automatic formatting. Defaults to enabled.
+* `hgbasm.autoCompleteEnabled`: Enable/disable autocompletion. Defaults to enabled.
+
+For full control over the compiler settings used when editing your project, create a file called `gbconfig.json` in the root of your project and configure the settings within as appropriate.
 
 ## Known Issues
 
-- Files which rely on other files being included ahead of them will throw errors on any missing symbols.
 - Extremely large projects which split source code across many files will load very slowly or not at all.
 
 ## Release Notes
