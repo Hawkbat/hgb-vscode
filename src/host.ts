@@ -153,7 +153,7 @@ export default class Host {
         if (!asmCtx) {
             return null
         }
-        if (asmCtx.diagnostics.some(d => d.line && d.line.file.source.path === path && d.line.lineNumber >= startLine && d.line.lineNumber <= endLine)) {
+        if (asmCtx.diagnostics.some(d => d.line && d.line.file.source.path === path && d.line.lineNumber >= startLine && d.line.lineNumber <= endLine ? true : false)) {
             return null
         }
         const file = this.getFileContext(path, asmCtx)
