@@ -44,6 +44,10 @@ Key settings:
 
 ## Release Notes
 
+### 1.1.1
+
+Improved support for interdependent file compilation and revised settings.
+
 ### 1.0.0
 
 Initial release.
