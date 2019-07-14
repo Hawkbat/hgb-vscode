@@ -1052,6 +1052,9 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                 if (label.file !== doc.uri.fsPath) {
                     continue
                 }
+                if (label.endLine < label.startLine) {
+                    continue
+                }
                 let endLine = label.endLine
                 while (!file.lines[endLine].source.text.trim() || file.lines[endLine].source.text.trim().startsWith(';')) {
                     endLine--
