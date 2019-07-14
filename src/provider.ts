@@ -840,7 +840,7 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                 if (section.file !== doc.uri.fsPath) {
                     continue
                 }
-                const sectionSymbol = new v.DocumentSymbol(sectionId, 'section', v.SymbolKind.Namespace, new v.Range(section.startLine, 0, section.endLine, file.lines[section.endLine].source.text.length), new v.Range(section.startLine, 0, section.startLine, file.lines[section.startLine].source.text.length))
+                const sectionSymbol = new v.DocumentSymbol(sectionId, 'section', v.SymbolKind.Namespace, new v.Range(section.startLine, 0, section.startLine, file.lines[section.startLine].source.text.length), new v.Range(section.startLine, 0, section.startLine, file.lines[section.startLine].source.text.length))
                 if (result.state.labels) {
                     sectionSymbol.children = []
                     for (const labelId of Object.keys(result.state.labels)) {
@@ -848,14 +848,14 @@ export default class Provider implements v.CompletionItemProvider, v.HoverProvid
                         if (label.id.includes('.') || label.section !== sectionId || label.file !== doc.uri.fsPath) {
                             continue
                         }
-                        const labelSymbol = new v.DocumentSymbol(labelId, 'global label', v.SymbolKind.Variable, new v.Range(label.startLine, 0, label.endLine, file.lines[label.endLine].source.text.length), new v.Range(label.startLine, 0, label.endLine, file.lines[label.endLine].source.text.length))
+                        const labelSymbol = new v.DocumentSymbol(labelId, 'global label', v.SymbolKind.Variable, new v.Range(label.startLine, 0, label.startLine, file.lines[label.startLine].source.text.length), new v.Range(label.startLine, 0, label.startLine, file.lines[label.startLine].source.text.length))
                         labelSymbol.children = []
                         for (const subLabelId of Object.keys(result.state.labels)) {
                             const subLabel = result.state.labels[subLabelId]
                             if (!subLabel.id.startsWith(`${labelId}.`) || subLabel.section !== sectionId || subLabel.file !== doc.uri.fsPath) {
                                 continue
                             }
-                            const subLabelSymbol = new v.DocumentSymbol(subLabelId.substr(subLabelId.indexOf('.')), 'local label', v.SymbolKind.Variable, new v.Range(subLabel.startLine, 0, subLabel.endLine, file.lines[subLabel.endLine].source.text.length), new v.Range(subLabel.startLine, 0, subLabel.endLine, file.lines[subLabel.endLine].source.text.length))
+                            const subLabelSymbol = new v.DocumentSymbol(subLabelId.substr(subLabelId.indexOf('.')), 'local label', v.SymbolKind.Variable, new v.Range(subLabel.startLine, 0, subLabel.startLine, file.lines[subLabel.startLine].source.text.length), new v.Range(subLabel.startLine, 0, subLabel.startLine, file.lines[subLabel.startLine].source.text.length))
                             labelSymbol.children.push(subLabelSymbol)
                         }
                         sectionSymbol.children.push(labelSymbol)
